@@ -225,14 +225,6 @@
     width: 240px !important;
     height: 240px !important;
   }
-  .pomodoro-ring svg {
-    width: 240px;
-    height: 240px;
-  }
-  .pomodoro-disc {
-    width: 190px !important;
-    height: 190px !important;
-  }
   .pomodoro-time {
     font-size: 44px !important;
   }

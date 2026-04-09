@@ -162,176 +162,103 @@ export default function TimerPopupPage() {
           minHeight: 0,
           display: "flex",
           alignItems: "center",
-          gap: "4vw",
-          padding: "0 5vw min(12px, 4vh)",
+          gap: 18,
+          padding: "0 16px 8px",
+          overflow: "hidden",
         }}
       >
         {/* ── Ring dial ── */}
-        <div
-          style={{
-            flexShrink: 0,
-            height: "100%",
-            aspectRatio: "1 / 1",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-        >
+        <div style={{ flexShrink: 0, width: 86, height: 86 }}>
           <svg
             width="100%"
             height="100%"
             viewBox="0 0 100 100"
             style={{
-              filter: running
-                ? `drop-shadow(0 0 10px ${color}55) drop-shadow(0 0 3px ${color}33)`
-                : "none",
+              filter: running ? `drop-shadow(0 0 8px ${color}55)` : "none",
               transition: "filter 0.6s ease",
               overflow: "visible",
             }}
           >
-            {/* Outer glass fill */}
-            <circle
-              cx="50" cy="50" r="47"
-              fill="rgba(255,255,255,0.032)"
-              stroke="rgba(255,255,255,0.055)"
-              strokeWidth="0.5"
-            />
-            {/* Track ring */}
+            <circle cx="50" cy="50" r="47" fill="rgba(255,255,255,0.032)" stroke="rgba(255,255,255,0.055)" strokeWidth="0.5"/>
+            <circle cx="50" cy="50" r={RADIUS} fill="none" stroke="rgba(255,255,255,0.07)" strokeWidth="4.5"/>
             <circle
               cx="50" cy="50" r={RADIUS}
-              fill="none"
-              stroke="rgba(255,255,255,0.07)"
-              strokeWidth="4"
-            />
-            {/* Progress arc */}
-            <circle
-              cx="50" cy="50" r={RADIUS}
-              fill="none"
-              stroke={color}
-              strokeWidth="4"
-              strokeLinecap="round"
-              strokeDasharray={CIRCUMFERENCE}
-              strokeDashoffset={dashOffset}
+              fill="none" stroke={color} strokeWidth="4.5" strokeLinecap="round"
+              strokeDasharray={CIRCUMFERENCE} strokeDashoffset={dashOffset}
               style={{
                 transform: "rotate(-90deg)",
-                transformOrigin: "50px 50px",
+                transformBox: "fill-box",
+                transformOrigin: "center",
                 transition: "stroke-dashoffset 0.85s ease, stroke 0.4s ease",
               }}
             />
-            {/* Time text */}
-            <text
-              x="50"
-              y="46"
-              textAnchor="middle"
-              dominantBaseline="middle"
-              fill="rgba(255,255,255,0.93)"
-              fontSize="18"
-              fontWeight="700"
-              fontFamily="ui-monospace, 'SF Mono', Consolas, monospace"
-              letterSpacing="-0.5"
-            >
+            <text x="50" y="46" textAnchor="middle" dominantBaseline="middle"
+              fill="rgba(255,255,255,0.93)" fontSize="19" fontWeight="700"
+              fontFamily="ui-monospace,'SF Mono',Consolas,monospace" letterSpacing="-0.5">
               {mins}:{secs}
             </text>
-            {/* Mode label */}
-            <text
-              x="50"
-              y="63"
-              textAnchor="middle"
-              fill={color}
-              fontSize="5.2"
-              fontWeight="600"
-              letterSpacing="1.4"
-              fontFamily="system-ui, sans-serif"
-              opacity="0.9"
-            >
+            <text x="50" y="63" textAnchor="middle"
+              fill={color} fontSize="5.5" fontWeight="600" letterSpacing="1.4" fontFamily="system-ui,sans-serif" opacity="0.9">
               {label}
             </text>
           </svg>
         </div>
 
-        {/* ── Action buttons ── */}
-        <div
-          style={{
-            flex: 1,
-            display: "flex",
-            flexDirection: "column",
-            gap: "min(10px, 3vh)",
-            minWidth: 0,
-          }}
-        >
-          {/* Start / Pause */}
+        {/* ── Action buttons — two circles side by side ── */}
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          {/* Play / Pause */}
           <button
             onClick={toggle}
             style={{
-              width: "100%",
-              padding: "min(10px, 3vh) 0",
-              borderRadius: "min(12px, 4vw)",
-              background: running
-                ? "rgba(99,102,241,0.16)"
-                : `linear-gradient(135deg, ${color} 0%, ${color}cc 100%)`,
-              border: running
-                ? "1px solid rgba(99,102,241,0.32)"
-                : "1px solid transparent",
-              color: "rgba(255,255,255,0.93)",
-              fontSize: "min(13px, 4.5vw, 5vh)",
-              fontWeight: 700,
+              width: 44, height: 44, borderRadius: "50%",
+              background: running ? "rgba(99,102,241,0.22)" : color,
+              border: `1.5px solid ${running ? "rgba(99,102,241,0.4)" : "transparent"}`,
+              display: "flex", alignItems: "center", justifyContent: "center",
               cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: "min(7px, 2vw)",
-              boxShadow: running ? "none" : `0 3px 18px ${color}44, 0 1px 4px rgba(0,0,0,0.3)`,
-              transition: "all 0.22s ease",
-              letterSpacing: "0.01em",
-            }}
-            onMouseEnter={e => {
-              if (!running) (e.currentTarget as HTMLElement).style.transform = "translateY(-1px)";
-            }}
-            onMouseLeave={e => {
-              (e.currentTarget as HTMLElement).style.transform = "translateY(0)";
+              boxShadow: running ? "none" : `0 2px 14px ${color}55`,
+              transition: "all 0.18s ease",
+              padding: 0, flexShrink: 0,
             }}
           >
-            <span style={{ fontSize: "min(15px, 5vw, 5.5vh)", lineHeight: 1 }}>
-              {running ? "⏸" : "▶"}
-            </span>
-            <span>{running ? "Pause" : "Start"}</span>
+            {running ? (
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="rgba(255,255,255,0.9)">
+                <rect x="6" y="4" width="4" height="16" rx="1"/>
+                <rect x="14" y="4" width="4" height="16" rx="1"/>
+              </svg>
+            ) : (
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="rgba(255,255,255,0.9)">
+                <polygon points="6,3 20,12 6,21"/>
+              </svg>
+            )}
           </button>
 
           {/* Reset */}
           <button
             onClick={reset}
             style={{
-              width: "100%",
-              padding: "min(7px, 2.2vh) 0",
-              borderRadius: "min(12px, 4vw)",
-              background: "rgba(255,255,255,0.04)",
-              border: "1px solid rgba(255,255,255,0.08)",
-              color: "rgba(255,255,255,0.38)",
-              fontSize: "min(11px, 3.8vw, 4.5vh)",
-              fontWeight: 600,
+              width: 36, height: 36, borderRadius: "50%",
+              background: "rgba(255,255,255,0.05)",
+              border: "1.5px solid rgba(255,255,255,0.10)",
+              display: "flex", alignItems: "center", justifyContent: "center",
               cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: "min(6px, 2vw)",
-              transition: "all 0.2s ease",
-              letterSpacing: "0.01em",
+              transition: "all 0.18s ease",
+              padding: 0, flexShrink: 0,
             }}
             onMouseEnter={e => {
               const el = e.currentTarget as HTMLElement;
-              el.style.background = "rgba(255,255,255,0.07)";
-              el.style.color = "rgba(255,255,255,0.62)";
-              el.style.borderColor = "rgba(255,255,255,0.14)";
+              el.style.background = "rgba(255,255,255,0.10)";
+              el.style.borderColor = "rgba(255,255,255,0.18)";
             }}
             onMouseLeave={e => {
               const el = e.currentTarget as HTMLElement;
-              el.style.background = "rgba(255,255,255,0.04)";
-              el.style.color = "rgba(255,255,255,0.38)";
-              el.style.borderColor = "rgba(255,255,255,0.08)";
+              el.style.background = "rgba(255,255,255,0.05)";
+              el.style.borderColor = "rgba(255,255,255,0.10)";
             }}
           >
-            <span style={{ fontSize: "min(13px, 4.5vw, 5vh)", lineHeight: 1 }}>↺</span>
-            <span>Reset</span>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.5)" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+              <path d="M3 3v5h5"/>
+            </svg>
           </button>
         </div>
       </div>

@@ -46,34 +46,32 @@ function PipTimerContent() {
       style={{
         width: "100vw", height: "100vh",
         display: "flex", alignItems: "center",
-        gap: "4vw", padding: "3vw 5vw",
+        gap: 18, padding: "0 20px",
         background:
           "radial-gradient(ellipse 140% 100% at 10% 20%, rgba(99,102,241,0.14), transparent 55%)," +
           "#06080f",
         boxSizing: "border-box",
+        overflow: "hidden",
         fontFamily: "system-ui, -apple-system, sans-serif",
         WebkitFontSmoothing: "antialiased",
       } as React.CSSProperties}
     >
-      {/* ── Ring dial ── */}
-      <div style={{ flexShrink: 0, height: "86%", aspectRatio: "1 / 1" }}>
+      {/* ── Ring dial — fixed small square ── */}
+      <div style={{ flexShrink: 0, width: 90, height: 90 }}>
         <svg
           width="100%" height="100%"
           viewBox="0 0 100 100"
           style={{
             overflow: "visible",
-            filter: running ? `drop-shadow(0 0 9px ${color}55)` : "none",
+            filter: running ? `drop-shadow(0 0 7px ${color}55)` : "none",
             transition: "filter 0.5s ease",
           }}
         >
-          {/* Glass fill */}
           <circle cx="50" cy="50" r="47" fill="rgba(255,255,255,0.03)" stroke="rgba(255,255,255,0.05)" strokeWidth="0.5"/>
-          {/* Track */}
-          <circle cx="50" cy="50" r={PIP_R} fill="none" stroke="rgba(255,255,255,0.07)" strokeWidth="4"/>
-          {/* Progress */}
+          <circle cx="50" cy="50" r={PIP_R} fill="none" stroke="rgba(255,255,255,0.07)" strokeWidth="4.5"/>
           <circle
             cx="50" cy="50" r={PIP_R}
-            fill="none" stroke={color} strokeWidth="4" strokeLinecap="round"
+            fill="none" stroke={color} strokeWidth="4.5" strokeLinecap="round"
             strokeDasharray={PIP_CIRCUM} strokeDashoffset={dashOffset}
             style={{
               transform: "rotate(-90deg)",
@@ -82,51 +80,45 @@ function PipTimerContent() {
               transition: "stroke-dashoffset 0.85s ease, stroke 0.4s ease",
             }}
           />
-          {/* Time */}
           <text
             x="50" y="46" textAnchor="middle" dominantBaseline="middle"
-            fill="rgba(255,255,255,0.93)" fontSize="18" fontWeight="700"
+            fill="rgba(255,255,255,0.93)" fontSize="19" fontWeight="700"
             fontFamily="ui-monospace,'SF Mono',Consolas,monospace" letterSpacing="-0.5"
           >
             {mins}:{secs}
           </text>
-          {/* Mode */}
           <text
             x="50" y="63" textAnchor="middle"
-            fill={color} fontSize="5.2" fontWeight="600" letterSpacing="1.4" opacity="0.9"
+            fill={color} fontSize="5.5" fontWeight="600" letterSpacing="1.4" opacity="0.9"
           >
             {modeShort}
           </text>
         </svg>
       </div>
 
-      {/* ── Icon-only buttons ── */}
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "min(12px, 3.5vh)" }}>
-
+      {/* ── Buttons — two small circles side by side ── */}
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
         {/* Play / Pause */}
         <button
           onClick={toggle}
           style={{
-            width: "100%",
-            aspectRatio: "1 / 1",
-            maxHeight: "min(58px, 22vh)",
-            borderRadius: "min(14px, 4vw)",
-            background: running ? "rgba(99,102,241,0.18)" : `linear-gradient(135deg, ${color}, ${color}cc)`,
-            border: `1px solid ${running ? "rgba(99,102,241,0.32)" : "transparent"}`,
+            width: 44, height: 44, borderRadius: "50%",
+            background: running ? "rgba(99,102,241,0.22)" : color,
+            border: `1.5px solid ${running ? "rgba(99,102,241,0.4)" : "transparent"}`,
             display: "flex", alignItems: "center", justifyContent: "center",
             cursor: "pointer",
-            boxShadow: running ? "none" : `0 3px 18px ${color}44`,
-            transition: "all 0.2s ease",
-            padding: 0,
+            boxShadow: running ? "none" : `0 2px 14px ${color}55`,
+            transition: "all 0.18s ease",
+            padding: 0, flexShrink: 0,
           }}
         >
           {running ? (
-            <svg style={{ width: "38%", height: "38%" }} viewBox="0 0 24 24" fill="rgba(255,255,255,0.9)">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="rgba(255,255,255,0.9)">
               <rect x="6" y="4" width="4" height="16" rx="1"/>
               <rect x="14" y="4" width="4" height="16" rx="1"/>
             </svg>
           ) : (
-            <svg style={{ width: "38%", height: "38%" }} viewBox="0 0 24 24" fill="rgba(255,255,255,0.9)">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="rgba(255,255,255,0.9)">
               <polygon points="6,3 20,12 6,21"/>
             </svg>
           )}
@@ -136,27 +128,24 @@ function PipTimerContent() {
         <button
           onClick={reset}
           style={{
-            width: "100%",
-            aspectRatio: "1 / 1",
-            maxHeight: "min(46px, 17vh)",
-            borderRadius: "min(14px, 4vw)",
-            background: "rgba(255,255,255,0.04)",
-            border: "1px solid rgba(255,255,255,0.09)",
+            width: 36, height: 36, borderRadius: "50%",
+            background: "rgba(255,255,255,0.05)",
+            border: "1.5px solid rgba(255,255,255,0.10)",
             display: "flex", alignItems: "center", justifyContent: "center",
             cursor: "pointer",
-            transition: "all 0.2s ease",
-            padding: 0,
+            transition: "all 0.18s ease",
+            padding: 0, flexShrink: 0,
           }}
           onMouseEnter={e => {
-            (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.09)";
-            (e.currentTarget as HTMLElement).style.borderColor = "rgba(255,255,255,0.16)";
+            (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.10)";
+            (e.currentTarget as HTMLElement).style.borderColor = "rgba(255,255,255,0.18)";
           }}
           onMouseLeave={e => {
-            (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.04)";
-            (e.currentTarget as HTMLElement).style.borderColor = "rgba(255,255,255,0.09)";
+            (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.05)";
+            (e.currentTarget as HTMLElement).style.borderColor = "rgba(255,255,255,0.10)";
           }}
         >
-          <svg style={{ width: "36%", height: "36%" }} viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.45)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.5)" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
             <path d="M3 3v5h5"/>
           </svg>
@@ -282,13 +271,14 @@ export default function PomodoroTimer({
         try {
           const pipWin: Window = await (
             window as unknown as { documentPictureInPicture: { requestWindow: (o: object) => Promise<Window> } }
-          ).documentPictureInPicture.requestWindow({ width: 460, height: 200 });
+          ).documentPictureInPicture.requestWindow({ width: 340, height: 116 });
 
-          // Inject reset CSS
+          // Inject reset CSS — kill all scrollbars and overflow
           const style = pipWin.document.createElement("style");
           style.textContent =
-            "*, *::before, *::after { box-sizing: border-box; margin: 0; }" +
-            "html, body { width: 100%; height: 100%; overflow: hidden; background: #06080f; }";
+            "*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }" +
+            "html, body { width: 100%; height: 100%; overflow: hidden; background: #06080f; scrollbar-width: none; -ms-overflow-style: none; }" +
+            "html::-webkit-scrollbar, body::-webkit-scrollbar { display: none; }";
           pipWin.document.head.appendChild(style);
 
           // Render PipTimerContent via a new React root
@@ -309,7 +299,7 @@ export default function PomodoroTimer({
         popupRef.current = window.open(
           "/timer",
           "fomodoro-timer",
-          "width=460,height=210,resizable=yes,scrollbars=no,location=no,toolbar=no,menubar=no,status=no"
+          "width=340,height=140,resizable=yes,scrollbars=no,location=no,toolbar=no,menubar=no,status=no"
         );
       }
     };
@@ -376,7 +366,8 @@ export default function PomodoroTimer({
       {/* ── Ring timer ── */}
       <div className="pomodoro-ring relative flex items-center justify-center" style={{ width: 280, height: 280 }}>
         <svg
-          width="280" height="280"
+          width="100%" height="100%"
+          viewBox="0 0 280 280"
           className="absolute"
           style={{
             overflow: "visible",
@@ -397,11 +388,11 @@ export default function PomodoroTimer({
           />
         </svg>
 
-        {/* Glass disc */}
+        {/* Glass disc — sized as % of container so it scales with media-query overrides */}
         <div
           className="pomodoro-disc relative z-10 flex flex-col items-center justify-center rounded-full"
           style={{
-            width: 220, height: 220,
+            width: "78.6%", height: "78.6%",
             background: "var(--glass-2)",
             backdropFilter: "blur(24px)",
             border: "1px solid var(--glass-border)",
@@ -460,6 +451,9 @@ export default function PomodoroTimer({
             </svg>
           )}
         </LoadingButton>
+
+        {/* Spacer to mirror the reset button, keeping play perfectly centered */}
+        <div style={{ width: 44, height: 44, flexShrink: 0 }} />
       </div>
 
       {/* Stats row */}

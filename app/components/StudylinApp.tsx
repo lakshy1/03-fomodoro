@@ -26,6 +26,101 @@ const AmbientSounds = dynamic(() => import("./AmbientSounds"), { ssr: false });
 const Notes         = dynamic(() => import("./Notes"),         { ssr: false });
 const KanbanBoard   = dynamic(() => import("./KanbanBoard"),   { ssr: false });
 
+// ─── Workspace loading screen ────────────────────────────────────────────────
+const LOADER_MESSAGES = [
+  "Preparing your workspace…",
+  "Syncing your sessions…",
+  "Loading your tasks…",
+  "Almost there…",
+  "Get ready to focus!",
+];
+const LOADER_DURATION = 5; // seconds
+const LOADER_R = 44;
+const LOADER_CIRC = 2 * Math.PI * LOADER_R;
+
+function WorkspaceLoader() {
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setTick((t) => t + 1), 1000);
+    return () => clearInterval(id);
+  }, []);
+  const elapsed = Math.min(tick, LOADER_DURATION);
+  const remaining = LOADER_DURATION - elapsed;
+  const progress = elapsed / LOADER_DURATION;
+  const dashOffset = LOADER_CIRC * (1 - progress);
+  const msgIdx = Math.min(elapsed, LOADER_MESSAGES.length - 1);
+
+  return (
+    <div
+      style={{
+        minHeight: "100vh",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 24,
+        background:
+          "radial-gradient(1200px 600px at 20% 0%, var(--mesh-a), transparent), radial-gradient(800px 400px at 80% 20%, var(--mesh-b), transparent), var(--bg-base)",
+      }}
+    >
+      {/* Ring */}
+      <div style={{ position: "relative", width: 120, height: 120 }}>
+        <svg width="120" height="120" viewBox="0 0 120 120" style={{ overflow: "visible" }}>
+          {/* Track */}
+          <circle cx="60" cy="60" r={LOADER_R} fill="none" stroke="var(--glass-border)" strokeWidth="5" />
+          {/* Progress arc */}
+          <circle
+            cx="60" cy="60" r={LOADER_R}
+            fill="none"
+            stroke="var(--accent)"
+            strokeWidth="5"
+            strokeLinecap="round"
+            strokeDasharray={LOADER_CIRC}
+            strokeDashoffset={dashOffset}
+            className="ring-progress"
+            style={{
+              transition: "stroke-dashoffset 0.9s cubic-bezier(0.16,1,0.3,1)",
+              filter: "drop-shadow(0 0 8px var(--accent-glow))",
+            }}
+          />
+        </svg>
+        {/* Countdown number */}
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontFamily: "var(--font-mono), monospace",
+            fontSize: 36,
+            fontWeight: 700,
+            color: "var(--text-1)",
+            letterSpacing: "-1px",
+          }}
+        >
+          {remaining}
+        </div>
+      </div>
+
+      {/* Message */}
+      <p
+        key={msgIdx}
+        className="fade-in"
+        style={{
+          fontSize: 14,
+          fontWeight: 500,
+          color: "var(--text-2)",
+          letterSpacing: "0.02em",
+          margin: 0,
+        }}
+      >
+        {LOADER_MESSAGES[msgIdx]}
+      </p>
+    </div>
+  );
+}
+
 type Tab   = "pomodoro" | "tasks" | "sounds" | "notes" | "kanban";
 type Theme = "dark" | "light";
 type View  = Tab | "leaderboard" | "profile" | "calendar" | "requests" | "add-friend";
@@ -1510,21 +1605,7 @@ export default function StudylinApp() {
   const displayInitial = (displayName[0] || "U").toUpperCase();
 
   if (!authReady) {
-    return (
-      <div
-        style={{
-          minHeight: "100vh",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          color: "var(--text-2)",
-          background:
-            "radial-gradient(1200px 600px at 20% 0%, var(--mesh-a), transparent), radial-gradient(800px 400px at 80% 20%, var(--mesh-b), transparent), var(--bg-base)",
-        }}
-      >
-        Loading your workspace...
-      </div>
-    );
+    return <WorkspaceLoader />;
   }
   const showSidebar = !isMobile || mobileOpen;
   const viewComponents: Record<View, React.ReactNode> = {
