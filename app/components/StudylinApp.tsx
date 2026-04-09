@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, type InputHTMLAttributes } from "react";
+import { useState, useEffect, useRef, useCallback, type InputHTMLAttributes } from "react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import {
@@ -15,6 +15,7 @@ import {
   updateProfile,
   ensureProfilePublicId,
 } from "../lib/queries";
+import { supabase } from "../lib/supabaseClient";
 import LoadingButton from "./LoadingButton";
 import { useToast } from "./ToastProvider";
 
@@ -1057,8 +1058,10 @@ export default function StudylinApp() {
   const [leaderboardRange, setLeaderboardRange] = useState<LeaderboardRange>("last7");
   const [requests, setRequests] = useState<FriendRequest[]>([]);
   const [profileStats, setProfileStats] = useState({ total: 0, streak: 0, bestDay: "" });
+  const [realtimeFriendIds, setRealtimeFriendIds] = useState<string[]>([]);
   const profileMenuRef = useRef<HTMLDivElement | null>(null);
   const profileBtnRef = useRef<HTMLButtonElement | null>(null);
+  const mountedRef = useRef(true);
   const [profile, setProfile] = useState<ProfileRecord>({
     name: "",
     publicId: "",
@@ -1072,6 +1075,12 @@ export default function StudylinApp() {
     buildLastNDays(28).map((d) => ({ date: d, minutes: 0 }))
   );
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
+
+  useEffect(() => {
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     const saved = localStorage.getItem("fomodoro_theme") as Theme | null;
@@ -1168,33 +1177,30 @@ export default function StudylinApp() {
     return () => window.removeEventListener("scroll", handler);
   }, [isMobile]);
 
-  useEffect(() => {
-    let mounted = true;
-    async function loadAuth() {
-      const data = await fetchProfile();
-      if (!mounted) return;
-      if (!data) {
-        router.push("/auth");
-        return;
-      }
-      setUserId(data.userId);
-      setProfile({
-        name: data.profile.name,
-        publicId: data.profile.publicId,
-        avatarUrl: data.profile.avatarUrl,
-      });
-      setProfileLoading(false);
-      setAuthReady(true);
-      const ensured = await ensureProfilePublicId(data.userId);
-      if (ensured) {
-        setProfile((p) => ({ ...p, publicId: ensured }));
-      }
+  const loadProfile = useCallback(async () => {
+    const data = await fetchProfile();
+    if (!mountedRef.current) return;
+    if (!data) {
+      router.push("/auth");
+      return;
     }
-    loadAuth();
-    return () => {
-      mounted = false;
-    };
+    setUserId(data.userId);
+    setProfile({
+      name: data.profile.name,
+      publicId: data.profile.publicId,
+      avatarUrl: data.profile.avatarUrl,
+    });
+    setProfileLoading(false);
+    setAuthReady(true);
+    const ensured = await ensureProfilePublicId(data.userId);
+    if (ensured && mountedRef.current) {
+      setProfile((p) => ({ ...p, publicId: ensured }));
+    }
   }, [router]);
+
+  useEffect(() => {
+    loadProfile();
+  }, [loadProfile]);
 
   useEffect(() => {
     if (!userId || !profileDirty) return;
@@ -1208,90 +1214,137 @@ export default function StudylinApp() {
     return () => clearTimeout(t);
   }, [profile, profileDirty, userId]);
 
-  useEffect(() => {
+  const refreshCalendar = useCallback(async () => {
     if (!userId) return;
-    let mounted = true;
-    async function loadCalendar() {
-      const uid = userId;
-      if (!uid) return;
-      const last28 = buildLastNDays(28);
-      const data = await fetchCalendarRange(uid, last28[0], last28[last28.length - 1]);
-      if (!mounted) return;
-      const byDate = new Map<string, number>();
-      data.forEach((row) => byDate.set(row.date, (byDate.get(row.date) || 0) + row.minutes));
-      const last7 = buildLastNDays(7);
-      setLast7Days(last7.map((d) => ({ date: d, minutes: byDate.get(d) || 0 })));
-      setHistoryDays(last28.map((d) => ({ date: d, minutes: byDate.get(d) || 0 })));
-      const totals = last28.map((d) => ({ date: d, minutes: byDate.get(d) || 0 }));
-      const totalMinutes = totals.reduce((a, b) => a + b.minutes, 0);
-      const best = totals.reduce((a, b) => (b.minutes > a.minutes ? b : a), totals[0]);
-      let streak = 0;
-      let current = 0;
-      totals.forEach((d) => {
-        if (d.minutes > 0) {
-          current += 1;
-          streak = Math.max(streak, current);
-        } else {
-          current = 0;
-        }
-      });
-      setProfileStats({
-        total: totalMinutes,
-        streak,
-        bestDay: best.date,
-      });
-      setCalendarLoading(false);
-    }
-    loadCalendar();
-    return () => {
-      mounted = false;
-    };
+    setCalendarLoading(true);
+    const last28 = buildLastNDays(28);
+    const data = await fetchCalendarRange(userId, last28[0], last28[last28.length - 1]);
+    if (!mountedRef.current) return;
+    const byDate = new Map<string, number>();
+    data.forEach((row) => byDate.set(row.date, (byDate.get(row.date) || 0) + row.minutes));
+    const last7 = buildLastNDays(7);
+    setLast7Days(last7.map((d) => ({ date: d, minutes: byDate.get(d) || 0 })));
+    setHistoryDays(last28.map((d) => ({ date: d, minutes: byDate.get(d) || 0 })));
+    const totals = last28.map((d) => ({ date: d, minutes: byDate.get(d) || 0 }));
+    const totalMinutes = totals.reduce((a, b) => a + b.minutes, 0);
+    const best = totals.reduce((a, b) => (b.minutes > a.minutes ? b : a), totals[0]);
+    let streak = 0;
+    let current = 0;
+    totals.forEach((d) => {
+      if (d.minutes > 0) {
+        current += 1;
+        streak = Math.max(streak, current);
+      } else {
+        current = 0;
+      }
+    });
+    setProfileStats({
+      total: totalMinutes,
+      streak,
+      bestDay: best.date,
+    });
+    setCalendarLoading(false);
   }, [userId]);
 
   useEffect(() => {
+    refreshCalendar();
+  }, [refreshCalendar]);
+
+  const refreshLeaderboard = useCallback(async () => {
     if (!userId) return;
-    let mounted = true;
-    async function loadLeaderboard() {
-      const uid = userId;
-      if (!uid) return;
-      const now = new Date();
-      const monthDays = buildMonthDays(now.getFullYear(), now.getMonth());
-      const days = leaderboardRange === "month" ? monthDays : buildLastNDays(7);
-      const rows = await fetchLeaderboardRange(uid, days[0], days[days.length - 1], days);
-      if (!mounted) return;
-      setLeaderboard(rows);
-      setLeaderboardLoading(false);
-    }
-    loadLeaderboard();
-    return () => {
-      mounted = false;
-    };
+    setLeaderboardLoading(true);
+    const now = new Date();
+    const monthDays = buildMonthDays(now.getFullYear(), now.getMonth());
+    const days = leaderboardRange === "month" ? monthDays : buildLastNDays(7);
+    const rows = await fetchLeaderboardRange(userId, days[0], days[days.length - 1], days);
+    if (!mountedRef.current) return;
+    setLeaderboard(rows);
+    setLeaderboardLoading(false);
   }, [userId, leaderboardRange]);
 
   useEffect(() => {
-    if (!userId) return;
-    let mounted = true;
-    async function loadRequests() {
-      const uid = userId;
-      if (!uid) return;
-      const data = await fetchFriendRequests(uid);
-      if (!mounted) return;
-      setRequests(data);
-      setRequestsLoading(false);
-    }
-    loadRequests();
-    return () => {
-      mounted = false;
-    };
-  }, [userId]);
+    refreshLeaderboard();
+  }, [refreshLeaderboard]);
 
-  async function refreshRequests() {
+  const refreshRequests = useCallback(async () => {
     if (!userId) return;
     setRequestsLoading(true);
     const data = await fetchFriendRequests(userId);
+    if (!mountedRef.current) return;
     setRequests(data);
     setRequestsLoading(false);
-  }
+  }, [userId]);
+
+  useEffect(() => {
+    refreshRequests();
+  }, [refreshRequests]);
+
+  const refreshFriendIds = useCallback(async () => {
+    if (!userId) return;
+    const { data } = await supabase.from("friends").select("friend_id").eq("user_id", userId);
+    if (!mountedRef.current) return;
+    const ids = (data || []).map((row: { friend_id: string }) => row.friend_id);
+    setRealtimeFriendIds(ids);
+  }, [userId]);
+
+  useEffect(() => {
+    refreshFriendIds();
+  }, [refreshFriendIds]);
+
+  useEffect(() => {
+    if (!userId) return;
+    const channel = supabase.channel(`rt-base-${userId}`);
+    channel
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "friend_requests", filter: `requester_id=eq.${userId}` },
+        () => refreshRequests()
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "friend_requests", filter: `addressee_id=eq.${userId}` },
+        () => refreshRequests()
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "friends", filter: `user_id=eq.${userId}` },
+        () => {
+          refreshFriendIds();
+          refreshLeaderboard();
+          refreshRequests();
+        }
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "profiles", filter: `id=eq.${userId}` },
+        () => loadProfile()
+      )
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [userId, loadProfile, refreshFriendIds, refreshLeaderboard, refreshRequests]);
+
+  useEffect(() => {
+    if (!userId) return;
+    const ids = Array.from(new Set([userId, ...realtimeFriendIds]));
+    const channels = ids.map((id) =>
+      supabase
+        .channel(`rt-sessions-${id}`)
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "study_sessions", filter: `user_id=eq.${id}` },
+          () => {
+            refreshCalendar();
+            refreshLeaderboard();
+          }
+        )
+        .subscribe()
+    );
+    return () => {
+      channels.forEach((ch) => supabase.removeChannel(ch));
+    };
+  }, [userId, realtimeFriendIds, refreshCalendar, refreshLeaderboard]);
 
   function applyTheme(t: Theme) {
     setTheme(t);
