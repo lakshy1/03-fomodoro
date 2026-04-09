@@ -248,7 +248,7 @@ export async function acceptFriendRequest(userId: string, requestId: string) {
   }
   const { error: updateError } = await supabase.from("friend_requests").update({ status: "accepted" }).eq("id", requestId);
   if (updateError) {
-    throw new Error(updateError.message || "Unable to accept request.");
+    throw new Error(updateError?.message || "Unable to accept request.");
   }
   const { error: insertSelfError } = await supabase
     .from("friends")
