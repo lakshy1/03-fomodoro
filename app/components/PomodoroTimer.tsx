@@ -293,19 +293,6 @@ export default function PomodoroTimer({
           )}
         </div>
       )}
-    </div>
-  );
-}
-
-function Stat({ label, value, color }: { label: string; value: React.ReactNode; color: string }) {
-  return (
-    <div className="flex flex-col items-center gap-0.5 flex-1">
-      <span className="text-xl font-semibold" style={{ color }}>
-        {value}
-      </span>
-      <span className="text-xs" style={{ color: "var(--text-3)", whiteSpace: "nowrap" }}>
-        {label}
-      </span>
       {showComplete && lastComplete && variant === "default" && (
         <div
           style={{
@@ -376,6 +363,19 @@ function Stat({ label, value, color }: { label: string; value: React.ReactNode; 
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function Stat({ label, value, color }: { label: string; value: React.ReactNode; color: string }) {
+  return (
+    <div className="flex flex-col items-center gap-0.5 flex-1">
+      <span className="text-xl font-semibold" style={{ color }}>
+        {value}
+      </span>
+      <span className="text-xs" style={{ color: "var(--text-3)", whiteSpace: "nowrap" }}>
+        {label}
+      </span>
     </div>
   );
 }
