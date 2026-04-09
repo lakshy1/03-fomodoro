@@ -343,7 +343,9 @@ export default function PomodoroTimer({
   const dashOffset = CIRCUMFERENCE * (1 - progress);
   const minutes    = pad(Math.floor(timeLeft / 60));
   const seconds    = pad(timeLeft % 60);
-  const totalMinutes = Math.floor(sessions * state.settings.focusMinutes);
+  // Completed sessions + elapsed minutes of the current running focus session
+  const elapsedThisSession = mode === "focus" ? Math.floor((duration - timeLeft) / 60) : 0;
+  const totalMinutes = Math.floor(sessions * state.settings.focusMinutes) + elapsedThisSession;
 
   return (
     <div className="pomodoro-wrap fade-in flex flex-col items-center gap-8 w-full max-w-lg mx-auto py-6">
