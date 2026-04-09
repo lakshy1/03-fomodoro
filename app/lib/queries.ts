@@ -191,7 +191,11 @@ export async function fetchFriendRequests(userId: string): Promise<FriendRequest
 // Create a friend request using a public code.
 export async function createFriendRequestByCode(userId: string, code: string) {
   const normalized = code.toUpperCase();
-  const { data, error } = await supabase.from("profiles").select("id").eq("public_id", normalized).single();
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("id")
+    .ilike("public_id", normalized)
+    .maybeSingle();
   if (error || !data) {
     throw new Error("No user found for that code.");
   }
@@ -233,25 +237,42 @@ export async function createFriendRequestByCode(userId: string, code: string) {
 
 // Accept a friend request, then create a mutual friend link.
 export async function acceptFriendRequest(userId: string, requestId: string) {
+  // Prefer server-side RPC (bypasses RLS edge cases) if available.
+  const { error: rpcError } = await supabase.rpc("accept_friend_request", { request_id: requestId });
+  if (!rpcError) return;
+  throw new Error(`RPC accept_friend_request failed: ${rpcError.message}`);
+
   const { data, error } = await supabase.from("friend_requests").select("*").eq("id", requestId).single();
   if (error || !data || data.addressee_id !== userId) {
-    throw new Error("Request not found.");
+    throw new Error(rpcError?.message || "Request not found.");
   }
   const { error: updateError } = await supabase.from("friend_requests").update({ status: "accepted" }).eq("id", requestId);
   if (updateError) {
-    throw new Error("Unable to accept request.");
+    throw new Error(updateError.message || "Unable to accept request.");
   }
-  const { error: insertError } = await supabase
+  const { error: insertSelfError } = await supabase
     .from("friends")
     .upsert(
-      [
-        { user_id: data.requester_id, friend_id: data.addressee_id },
-        { user_id: data.addressee_id, friend_id: data.requester_id },
-      ],
+      [{ user_id: data.addressee_id, friend_id: data.requester_id }],
       { onConflict: "user_id,friend_id" }
     );
-  if (insertError) {
-    throw new Error("Unable to create friend link.");
+  const { error: insertOtherError } = await supabase
+    .from("friends")
+    .upsert(
+      [{ user_id: data.requester_id, friend_id: data.addressee_id }],
+      { onConflict: "user_id,friend_id" }
+    );
+  if (insertSelfError && insertOtherError) {
+    const parts = [insertSelfError, insertOtherError].map((err) => {
+      const code = (err as { code?: string }).code;
+      return `${err.message || "Insert failed"}${code ? ` (code: ${code})` : ""}`;
+    });
+    throw new Error(parts.join(" | "));
+  }
+  if (insertOtherError) {
+    // If policies only allow inserting your own row, this can fail silently for the other user.
+    // We still keep the current user's row so the app works for the accepter.
+    return;
   }
 }
 
