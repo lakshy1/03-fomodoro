@@ -4,6 +4,14 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 type Mode = "focus" | "short" | "long";
 
+// IST date helpers — anchored to Asia/Kolkata (UTC+5:30) so the day resets at 12:00 AM IST.
+const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+const toISTDate = (utcMs: number): string => {
+  const ist = new Date(utcMs + IST_OFFSET_MS);
+  return ist.toISOString().slice(0, 10); // "YYYY-MM-DD"
+};
+const todayIST = () => toISTDate(Date.now());
+
 export type PomodoroSettings = {
   focusMinutes: number;
   shortBreakMinutes: number;
@@ -18,6 +26,7 @@ type PomodoroState = {
   sessions: number;
   updatedAt: number;
   settings: PomodoroSettings;
+  sessionDate: string; // IST "YYYY-MM-DD" — resets sessions at 12 AM IST
 };
 
 const STATE_KEY = "pomodoro_state_v1";
@@ -39,6 +48,7 @@ const durationFor = (mode: Mode, settings: PomodoroSettings) => {
 };
 
 const readState = (): PomodoroState => {
+  const today = todayIST();
   if (typeof window === "undefined") {
     return {
       mode: "focus",
@@ -47,15 +57,22 @@ const readState = (): PomodoroState => {
       sessions: 0,
       updatedAt: Date.now(),
       settings: defaultSettings,
+      sessionDate: today,
     };
   }
   try {
     const raw = localStorage.getItem(STATE_KEY);
     if (!raw) throw new Error("no state");
     const parsed = JSON.parse(raw) as PomodoroState;
+    const storedDate = parsed.sessionDate || "";
+    // Reset sessions/running at midnight IST
+    const newDay = storedDate !== today;
     return {
       ...parsed,
       settings: { ...defaultSettings, ...(parsed.settings || {}) },
+      sessionDate: today,
+      sessions: newDay ? 0 : parsed.sessions,
+      running: newDay ? false : parsed.running,
     };
   } catch {
     return {
@@ -65,6 +82,7 @@ const readState = (): PomodoroState => {
       sessions: 0,
       updatedAt: Date.now(),
       settings: defaultSettings,
+      sessionDate: today,
     };
   }
 };
@@ -171,6 +189,28 @@ export function usePomodoroStore(initialSettings?: Partial<PomodoroSettings>) {
     tickOwner();
     const ownerInterval = setInterval(tickOwner, 2000);
     return () => clearInterval(ownerInterval);
+  }, []);
+
+  // Midnight IST reset — check every minute and reset sessions if the IST date changed
+  useEffect(() => {
+    const checkMidnight = () => {
+      const today = todayIST();
+      setState((prev) => {
+        if (prev.sessionDate === today) return prev;
+        const next: PomodoroState = {
+          ...prev,
+          sessions: 0,
+          running: false,
+          sessionDate: today,
+          updatedAt: Date.now(),
+        };
+        writeState(next);
+        channelRef.current?.postMessage({ type: "state", payload: next });
+        return next;
+      });
+    };
+    const id = setInterval(checkMidnight, 60_000);
+    return () => clearInterval(id);
   }, []);
 
   const handleCommand = useCallback((cmd?: string, value?: unknown) => {
