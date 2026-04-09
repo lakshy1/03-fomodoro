@@ -10,7 +10,7 @@ const MODE_META = {
   long:  { label: "Long Break",  color: "#06b6d4", bg: "var(--cyan-dim)",    border: "var(--cyan-border)"    },
 } as const;
 
-type Mode = keyof typeof MODE_META;
+export type Mode = keyof typeof MODE_META;
 
 const RADIUS       = 110;
 const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
@@ -25,44 +25,48 @@ function pad(n: number) { return n.toString().padStart(2, "0"); }
    PipTimerContent — rendered inside the Document PiP window.
    Icon-only buttons, fully responsive via vmin/vh/vw units.
 ───────────────────────────────────────────────────────────── */
-function MacDot({
-  bg, hoverBg, symbol, title, onClick,
-}: {
-  bg: string; hoverBg: string; symbol: string; title: string; onClick: () => void;
-}) {
-  const [hovered, setHovered] = useState(false);
+/* Shared mac dot + pip body used by both Document PiP and the /timer fallback page */
+function MacDots({ onClose, onMin, onMax }: { onClose: () => void; onMin: () => void; onMax: () => void }) {
+  const [hov, setHov] = useState<number>(-1);
+  const dots = [
+    { bg: "#ff5f57", hov: "#ff3b30", sym: "×", fn: onClose },
+    { bg: "#ffbd2e", hov: "#ff9500", sym: "−", fn: onMin  },
+    { bg: "#28c840", hov: "#34c759", sym: "↗", fn: onMax  },
+  ];
   return (
-    <button
-      onClick={onClick}
-      title={title}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-      style={{
-        width: 11, height: 11, borderRadius: "50%",
-        border: "none", padding: 0, cursor: "pointer",
-        background: hovered ? hoverBg : bg,
-        display: "flex", alignItems: "center", justifyContent: "center",
-        flexShrink: 0,
-        transition: "background 0.12s ease",
-        fontSize: 7, fontWeight: 900, lineHeight: 1,
-        color: "rgba(0,0,0,0.6)",
-      }}
-    >
-      {hovered ? symbol : null}
-    </button>
+    <div style={{ display: "flex", gap: 5, alignItems: "center" }}>
+      {dots.map((d, i) => (
+        <button
+          key={i}
+          onClick={d.fn}
+          onMouseEnter={() => setHov(i)}
+          onMouseLeave={() => setHov(-1)}
+          style={{
+            width: 11, height: 11, borderRadius: "50%",
+            border: "none", padding: 0, cursor: "pointer", flexShrink: 0,
+            background: hov === i ? d.hov : d.bg,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            fontSize: 7, fontWeight: 900, lineHeight: 1,
+            color: "rgba(0,0,0,0.55)",
+            transition: "background 0.1s ease",
+            boxShadow: "inset 0 0 0 0.5px rgba(0,0,0,0.18)",
+          }}
+        >
+          {hov === i ? d.sym : null}
+        </button>
+      ))}
+    </div>
   );
 }
 
-function PipTimerContent() {
-  const { state, toggle, reset } = usePomodoroStore();
-  const { mode, timeLeft, running, settings } = state;
-
-  const duration = useMemo(() => {
-    if (mode === "short") return settings.shortBreakMinutes * 60;
-    if (mode === "long")  return settings.longBreakMinutes  * 60;
-    return settings.focusMinutes * 60;
-  }, [mode, settings]);
-
+export function PipBody({
+  timeLeft, running, mode, duration, toggle, reset,
+  onClose, onMin, onMax,
+}: {
+  timeLeft: number; running: boolean; mode: Mode; duration: number;
+  toggle: () => void; reset: () => void;
+  onClose: () => void; onMin: () => void; onMax: () => void;
+}) {
   const dashOffset = PIP_CIRCUM * (1 - (duration > 0 ? 1 - timeLeft / duration : 0));
   const mins = pad(Math.floor(timeLeft / 60));
   const secs = pad(timeLeft % 60);
@@ -73,9 +77,11 @@ function PipTimerContent() {
     <div
       style={{
         width: "100vw", height: "100vh",
-        display: "flex", flexDirection: "column",
+        position: "relative",
+        display: "flex", alignItems: "center",
+        gap: 14, padding: "0 12px 0 14px",
         background:
-          "radial-gradient(ellipse 140% 100% at 10% 20%, rgba(99,102,241,0.14), transparent 55%)," +
+          "radial-gradient(ellipse 160% 120% at 5% 50%, rgba(99,102,241,0.15), transparent 50%)," +
           "#06080f",
         boxSizing: "border-box",
         overflow: "hidden",
@@ -83,146 +89,130 @@ function PipTimerContent() {
         WebkitFontSmoothing: "antialiased",
       } as React.CSSProperties}
     >
-      {/* ── Mac traffic-light bar ── */}
-      <div
-        style={{
-          height: 22, flexShrink: 0,
-          display: "flex", alignItems: "center",
-          padding: "0 10px", gap: 6,
-          borderBottom: "1px solid rgba(255,255,255,0.05)",
-        }}
-      >
-        <MacDot
-          bg="rgba(239,68,68,0.75)" hoverBg="#ef4444"
-          symbol="×" title="Close"
-          onClick={() => window.close()}
-        />
-        <MacDot
-          bg="rgba(245,158,11,0.70)" hoverBg="#f59e0b"
-          symbol="−" title="Minimise"
-          onClick={() => { try { window.resizeTo(window.outerWidth, 22); } catch {} }}
-        />
-        <MacDot
-          bg="rgba(34,197,94,0.65)" hoverBg="#22c55e"
-          symbol="↗" title="Switch to app"
-          onClick={() => { try { (window.opener as Window | null)?.focus(); } catch {} window.close(); }}
-        />
-        <span
+      {/* Mac dots — absolute top-right */}
+      <div style={{ position: "absolute", top: 8, right: 10, zIndex: 10 }}>
+        <MacDots onClose={onClose} onMin={onMin} onMax={onMax} />
+      </div>
+
+      {/* ── Ring — big ── */}
+      <div style={{ flexShrink: 0, width: 96, height: 96 }}>
+        <svg
+          width="100%" height="100%"
+          viewBox="0 0 100 100"
           style={{
-            flex: 1, textAlign: "center",
-            fontSize: 9, fontWeight: 600,
-            color: "rgba(255,255,255,0.22)",
-            letterSpacing: "0.08em", textTransform: "uppercase",
-            pointerEvents: "none", userSelect: "none",
+            overflow: "visible",
+            filter: running ? `drop-shadow(0 0 9px ${color}66)` : "none",
+            transition: "filter 0.5s ease",
           }}
         >
-          FomoDoro
-        </span>
+          {/* Glass fill */}
+          <circle cx="50" cy="50" r="47" fill="rgba(255,255,255,0.025)" stroke="rgba(255,255,255,0.04)" strokeWidth="0.5"/>
+          {/* Track */}
+          <circle cx="50" cy="50" r={PIP_R} fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="5.5"/>
+          {/* Arc */}
+          <circle
+            cx="50" cy="50" r={PIP_R}
+            fill="none" stroke={color} strokeWidth="5.5" strokeLinecap="round"
+            strokeDasharray={PIP_CIRCUM} strokeDashoffset={dashOffset}
+            style={{
+              transform: "rotate(-90deg)",
+              transformBox: "fill-box",
+              transformOrigin: "center",
+              transition: "stroke-dashoffset 0.85s ease, stroke 0.4s ease",
+            }}
+          />
+          {/* Time */}
+          <text
+            x="50" y="45" textAnchor="middle" dominantBaseline="middle"
+            fill="rgba(255,255,255,0.94)" fontSize="20" fontWeight="700"
+            fontFamily="ui-monospace,'SF Mono',Consolas,monospace" letterSpacing="-0.5"
+          >
+            {mins}:{secs}
+          </text>
+          {/* Mode label */}
+          <text
+            x="50" y="63" textAnchor="middle"
+            fill={color} fontSize="6" fontWeight="600" letterSpacing="1.4" opacity="0.85"
+          >
+            {modeShort}
+          </text>
+        </svg>
       </div>
 
-      {/* ── Ring + buttons row ── */}
-      <div
-        style={{
-          flex: 1, minHeight: 0,
-          display: "flex", alignItems: "center",
-          gap: 14, padding: "0 16px",
-        }}
-      >
-        {/* Ring */}
-        <div style={{ flexShrink: 0, width: 76, height: 76 }}>
-          <svg
-            width="100%" height="100%"
-            viewBox="0 0 100 100"
-            style={{
-              overflow: "visible",
-              filter: running ? `drop-shadow(0 0 7px ${color}55)` : "none",
-              transition: "filter 0.5s ease",
-            }}
-          >
-            <circle cx="50" cy="50" r="47" fill="rgba(255,255,255,0.03)" stroke="rgba(255,255,255,0.05)" strokeWidth="0.5"/>
-            <circle cx="50" cy="50" r={PIP_R} fill="none" stroke="rgba(255,255,255,0.07)" strokeWidth="5"/>
-            <circle
-              cx="50" cy="50" r={PIP_R}
-              fill="none" stroke={color} strokeWidth="5" strokeLinecap="round"
-              strokeDasharray={PIP_CIRCUM} strokeDashoffset={dashOffset}
-              style={{
-                transform: "rotate(-90deg)",
-                transformBox: "fill-box",
-                transformOrigin: "center",
-                transition: "stroke-dashoffset 0.85s ease, stroke 0.4s ease",
-              }}
-            />
-            <text
-              x="50" y="45" textAnchor="middle" dominantBaseline="middle"
-              fill="rgba(255,255,255,0.93)" fontSize="20" fontWeight="700"
-              fontFamily="ui-monospace,'SF Mono',Consolas,monospace" letterSpacing="-0.5"
-            >
-              {mins}:{secs}
-            </text>
-            <text
-              x="50" y="63" textAnchor="middle"
-              fill={color} fontSize="6" fontWeight="600" letterSpacing="1.2" opacity="0.9"
-            >
-              {modeShort}
-            </text>
-          </svg>
-        </div>
-
-        {/* Buttons */}
-        <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
-          <button
-            onClick={toggle}
-            style={{
-              width: 40, height: 40, borderRadius: "50%",
-              background: running ? "rgba(99,102,241,0.22)" : color,
-              border: `1.5px solid ${running ? "rgba(99,102,241,0.4)" : "transparent"}`,
-              display: "flex", alignItems: "center", justifyContent: "center",
-              cursor: "pointer",
-              boxShadow: running ? "none" : `0 2px 12px ${color}55`,
-              transition: "all 0.18s ease",
-              padding: 0, flexShrink: 0,
-            }}
-          >
-            {running ? (
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="rgba(255,255,255,0.9)">
-                <rect x="6" y="4" width="4" height="16" rx="1"/>
-                <rect x="14" y="4" width="4" height="16" rx="1"/>
-              </svg>
-            ) : (
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="rgba(255,255,255,0.9)">
-                <polygon points="6,3 20,12 6,21"/>
-              </svg>
-            )}
-          </button>
-
-          <button
-            onClick={reset}
-            style={{
-              width: 32, height: 32, borderRadius: "50%",
-              background: "rgba(255,255,255,0.05)",
-              border: "1.5px solid rgba(255,255,255,0.10)",
-              display: "flex", alignItems: "center", justifyContent: "center",
-              cursor: "pointer",
-              transition: "all 0.18s ease",
-              padding: 0, flexShrink: 0,
-            }}
-            onMouseEnter={e => {
-              (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.10)";
-              (e.currentTarget as HTMLElement).style.borderColor = "rgba(255,255,255,0.18)";
-            }}
-            onMouseLeave={e => {
-              (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.05)";
-              (e.currentTarget as HTMLElement).style.borderColor = "rgba(255,255,255,0.10)";
-            }}
-          >
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.5)" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
-              <path d="M3 3v5h5"/>
+      {/* ── Vertical icon buttons ── */}
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
+        {/* Play / Pause */}
+        <button
+          onClick={toggle}
+          style={{
+            width: 42, height: 42, borderRadius: "50%", padding: 0,
+            background: running ? "rgba(99,102,241,0.20)" : color,
+            border: `1.5px solid ${running ? "rgba(99,102,241,0.38)" : "transparent"}`,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            cursor: "pointer", flexShrink: 0,
+            boxShadow: running ? "none" : `0 2px 14px ${color}55`,
+            transition: "all 0.18s ease",
+          }}
+        >
+          {running ? (
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="rgba(255,255,255,0.92)">
+              <rect x="6" y="4" width="4" height="16" rx="1"/>
+              <rect x="14" y="4" width="4" height="16" rx="1"/>
             </svg>
-          </button>
-        </div>
+          ) : (
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="rgba(255,255,255,0.92)">
+              <polygon points="6,3 20,12 6,21"/>
+            </svg>
+          )}
+        </button>
+
+        {/* Reset */}
+        <button
+          onClick={reset}
+          style={{
+            width: 34, height: 34, borderRadius: "50%", padding: 0,
+            background: "rgba(255,255,255,0.05)",
+            border: "1.5px solid rgba(255,255,255,0.10)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            cursor: "pointer", flexShrink: 0,
+            transition: "all 0.18s ease",
+          }}
+          onMouseEnter={e => {
+            (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.10)";
+            (e.currentTarget as HTMLElement).style.borderColor = "rgba(255,255,255,0.20)";
+          }}
+          onMouseLeave={e => {
+            (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.05)";
+            (e.currentTarget as HTMLElement).style.borderColor = "rgba(255,255,255,0.10)";
+          }}
+        >
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.50)" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+            <path d="M3 3v5h5"/>
+          </svg>
+        </button>
       </div>
     </div>
+  );
+}
+
+function PipTimerContent() {
+  const { state, toggle, reset } = usePomodoroStore();
+  const { mode, timeLeft, running, settings } = state;
+  const duration = useMemo(() => {
+    if (mode === "short") return settings.shortBreakMinutes * 60;
+    if (mode === "long")  return settings.longBreakMinutes  * 60;
+    return settings.focusMinutes * 60;
+  }, [mode, settings]);
+
+  return (
+    <PipBody
+      timeLeft={timeLeft} running={running} mode={mode} duration={duration}
+      toggle={toggle} reset={reset}
+      onClose={() => window.close()}
+      onMin={() => { try { window.resizeTo(window.outerWidth, 30); } catch {} }}
+      onMax={() => { try { (window.opener as Window | null)?.focus(); } catch {} window.close(); }}
+    />
   );
 }
 
@@ -342,7 +332,7 @@ export default function PomodoroTimer({
         try {
           const pipWin: Window = await (
             window as unknown as { documentPictureInPicture: { requestWindow: (o: object) => Promise<Window> } }
-          ).documentPictureInPicture.requestWindow({ width: 290, height: 120 });
+          ).documentPictureInPicture.requestWindow({ width: 230, height: 116 });
 
           // Inject reset CSS — kill all scrollbars and overflow
           const style = pipWin.document.createElement("style");
@@ -370,7 +360,7 @@ export default function PomodoroTimer({
         popupRef.current = window.open(
           "/timer",
           "fomodoro-timer",
-          "width=290,height=154,resizable=yes,scrollbars=no,location=no,toolbar=no,menubar=no,status=no"
+          "width=230,height=170,resizable=yes,scrollbars=no,location=no,toolbar=no,menubar=no,status=no"
         );
       }
     };
