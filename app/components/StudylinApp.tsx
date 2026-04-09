@@ -1279,11 +1279,11 @@ export default function StudylinApp() {
     const now = new Date();
     const monthDays = buildMonthDays(now.getFullYear(), now.getMonth());
     const days = leaderboardRange === "month" ? monthDays : buildLastNDays(7);
-    const rows = await fetchLeaderboardRange(userId, days[0], days[days.length - 1], days);
+    const rows = await fetchLeaderboardRange(userId, days[0], days[days.length - 1], days, profile.name);
     if (!mountedRef.current) return;
     setLeaderboard(rows);
     setLeaderboardLoading(false);
-  }, [userId, leaderboardRange]);
+  }, [userId, leaderboardRange, profile.name]);
 
   useEffect(() => {
     refreshLeaderboard();

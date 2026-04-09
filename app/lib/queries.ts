@@ -87,7 +87,7 @@ export async function updateProfile(
   let avatarUrl = patch.avatar_url ?? undefined;
   if (patch.avatar_file) {
     const ext = patch.avatar_file.name.split(".").pop() || "png";
-    const path = `avatars/${userId}-${Date.now()}.${ext}`;
+    const path = `${userId}-${Date.now()}.${ext}`;
     const { error } = await supabase.storage.from("avatars").upload(path, patch.avatar_file, { upsert: true });
     if (!error) {
       const { data } = supabase.storage.from("avatars").getPublicUrl(path);
@@ -122,7 +122,8 @@ export async function fetchLeaderboardRange(
   userId: string,
   from: string,
   to: string,
-  days: string[]
+  days: string[],
+  currentName?: string
 ): Promise<LeaderboardEntry[]> {
   const { data: friends } = await supabase.from("friends").select("friend_id").eq("user_id", userId);
   const ids = Array.from(new Set([userId, ...(friends || []).map((f: { friend_id: string }) => f.friend_id)]));
@@ -145,7 +146,7 @@ export async function fetchLeaderboardRange(
     const daysData = days.map((d) => ({ date: d, minutes: map.get(d) || 0 }));
     const total = daysData.reduce((a, b) => a + b.minutes, 0);
     return {
-      name: names.get(id) || "User",
+      name: names.get(id) || (id === userId ? currentName || "You" : "User"),
       days: daysData,
       total,
     };
