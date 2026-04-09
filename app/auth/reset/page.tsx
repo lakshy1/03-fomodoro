@@ -272,134 +272,135 @@ export default function ResetPasswordPage() {
           }}
           className={error ? "shake" : undefined}
         >
-        <h1 style={{ fontSize: 20, fontWeight: 700, color: "var(--text-1)" }}>Set a new password</h1>
-        <p style={{ fontSize: 12, color: "var(--text-3)", marginTop: 6 }}>
-          Choose a strong password to secure your account.
-        </p>
+          <h1 style={{ fontSize: 20, fontWeight: 700, color: "var(--text-1)" }}>Set a new password</h1>
+          <p style={{ fontSize: 12, color: "var(--text-3)", marginTop: 6 }}>
+            Choose a strong password to secure your account.
+          </p>
 
-        {!ready && message && (
-          <div
-            style={{
-              marginTop: 16,
-              background: "rgba(99,102,241,0.12)",
-              color: "var(--accent-text)",
-              border: "1px solid var(--accent-border)",
-              padding: "8px 10px",
-              borderRadius: 10,
-              fontSize: 12,
-            }}
-          >
-            {message}
-          </div>
-        )}
-
-        {ready && (
-          <form onSubmit={handleUpdate} style={{ marginTop: 16, display: "flex", flexDirection: "column", gap: 12 }}>
-            <input
-              type="password"
-              placeholder="New password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
+          {!ready && message && (
+            <div
               style={{
-                background: "var(--glass-2)",
-                border: "1px solid var(--glass-border)",
-                borderRadius: 12,
-                padding: "12px 14px",
-                color: "var(--text-1)",
-                outline: "none",
-                boxShadow: "0 0 0 0 rgba(99,102,241,0.0)",
-                transition: "all 0.2s ease",
-              }}
-              onFocus={(e) => {
-                (e.currentTarget as HTMLElement).style.borderColor = "rgba(99,102,241,0.7)";
-                (e.currentTarget as HTMLElement).style.boxShadow = "0 0 0 3px rgba(99,102,241,0.2)";
-              }}
-              onBlur={(e) => {
-                (e.currentTarget as HTMLElement).style.borderColor = "var(--glass-border)";
-                (e.currentTarget as HTMLElement).style.boxShadow = "0 0 0 0 rgba(99,102,241,0.0)";
-              }}
-            />
-            <input
-              type="password"
-              placeholder="Confirm password"
-              value={confirm}
-              onChange={(e) => setConfirm(e.target.value)}
-              required
-              style={{
-                background: "var(--glass-2)",
-                border: "1px solid var(--glass-border)",
-                borderRadius: 12,
-                padding: "12px 14px",
-                color: "var(--text-1)",
-                outline: "none",
-                boxShadow: "0 0 0 0 rgba(99,102,241,0.0)",
-                transition: "all 0.2s ease",
-              }}
-              onFocus={(e) => {
-                (e.currentTarget as HTMLElement).style.borderColor = "rgba(99,102,241,0.7)";
-                (e.currentTarget as HTMLElement).style.boxShadow = "0 0 0 3px rgba(99,102,241,0.2)";
-              }}
-              onBlur={(e) => {
-                (e.currentTarget as HTMLElement).style.borderColor = "var(--glass-border)";
-                (e.currentTarget as HTMLElement).style.boxShadow = "0 0 0 0 rgba(99,102,241,0.0)";
-              }}
-            />
-            {error && (
-              <div
-                style={{
-                  background: "rgba(239,68,68,0.1)",
-                  color: "#ef4444",
-                  border: "1px solid rgba(239,68,68,0.3)",
-                  padding: "8px 10px",
-                  borderRadius: 10,
-                  fontSize: 12,
-                }}
-              >
-                {error}
-              </div>
-            )}
-            {message && !error && (
-              <div
-                style={{
-                  background: "rgba(34,197,94,0.12)",
-                  color: "#22c55e",
-                  border: "1px solid rgba(34,197,94,0.3)",
-                  padding: "8px 10px",
-                  borderRadius: 10,
-                  fontSize: 12,
-                }}
-              >
-                {message}
-              </div>
-            )}
-            <LoadingButton
-              type="submit"
-              loading={loading}
-              style={{
-                border: "none",
-                borderRadius: 12,
-                padding: "12px 14px",
-                background: "var(--accent)",
-                color: "white",
-                fontWeight: 700,
-                cursor: "pointer",
-                opacity: loading ? 0.7 : 1,
-                transition: "transform 0.18s ease, box-shadow 0.18s ease",
-              }}
-              onMouseEnter={(e) => {
-                (e.currentTarget as HTMLElement).style.transform = "translateY(-1px)";
-                (e.currentTarget as HTMLElement).style.boxShadow = "0 10px 20px rgba(99,102,241,0.35)";
-              }}
-              onMouseLeave={(e) => {
-                (e.currentTarget as HTMLElement).style.transform = "translateY(0)";
-                (e.currentTarget as HTMLElement).style.boxShadow = "none";
+                marginTop: 16,
+                background: "rgba(99,102,241,0.12)",
+                color: "var(--accent-text)",
+                border: "1px solid var(--accent-border)",
+                padding: "8px 10px",
+                borderRadius: 10,
+                fontSize: 12,
               }}
             >
-              {loading ? "Updating..." : "Update password"}
-            </LoadingButton>
-          </form>
-        )}
+              {message}
+            </div>
+          )}
+
+          {ready && (
+            <form onSubmit={handleUpdate} style={{ marginTop: 16, display: "flex", flexDirection: "column", gap: 12 }}>
+              <input
+                type="password"
+                placeholder="New password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                style={{
+                  background: "var(--glass-2)",
+                  border: "1px solid var(--glass-border)",
+                  borderRadius: 12,
+                  padding: "12px 14px",
+                  color: "var(--text-1)",
+                  outline: "none",
+                  boxShadow: "0 0 0 0 rgba(99,102,241,0.0)",
+                  transition: "all 0.2s ease",
+                }}
+                onFocus={(e) => {
+                  (e.currentTarget as HTMLElement).style.borderColor = "rgba(99,102,241,0.7)";
+                  (e.currentTarget as HTMLElement).style.boxShadow = "0 0 0 3px rgba(99,102,241,0.2)";
+                }}
+                onBlur={(e) => {
+                  (e.currentTarget as HTMLElement).style.borderColor = "var(--glass-border)";
+                  (e.currentTarget as HTMLElement).style.boxShadow = "0 0 0 0 rgba(99,102,241,0.0)";
+                }}
+              />
+              <input
+                type="password"
+                placeholder="Confirm password"
+                value={confirm}
+                onChange={(e) => setConfirm(e.target.value)}
+                required
+                style={{
+                  background: "var(--glass-2)",
+                  border: "1px solid var(--glass-border)",
+                  borderRadius: 12,
+                  padding: "12px 14px",
+                  color: "var(--text-1)",
+                  outline: "none",
+                  boxShadow: "0 0 0 0 rgba(99,102,241,0.0)",
+                  transition: "all 0.2s ease",
+                }}
+                onFocus={(e) => {
+                  (e.currentTarget as HTMLElement).style.borderColor = "rgba(99,102,241,0.7)";
+                  (e.currentTarget as HTMLElement).style.boxShadow = "0 0 0 3px rgba(99,102,241,0.2)";
+                }}
+                onBlur={(e) => {
+                  (e.currentTarget as HTMLElement).style.borderColor = "var(--glass-border)";
+                  (e.currentTarget as HTMLElement).style.boxShadow = "0 0 0 0 rgba(99,102,241,0.0)";
+                }}
+              />
+              {error && (
+                <div
+                  style={{
+                    background: "rgba(239,68,68,0.1)",
+                    color: "#ef4444",
+                    border: "1px solid rgba(239,68,68,0.3)",
+                    padding: "8px 10px",
+                    borderRadius: 10,
+                    fontSize: 12,
+                  }}
+                >
+                  {error}
+                </div>
+              )}
+              {message && !error && (
+                <div
+                  style={{
+                    background: "rgba(34,197,94,0.12)",
+                    color: "#22c55e",
+                    border: "1px solid rgba(34,197,94,0.3)",
+                    padding: "8px 10px",
+                    borderRadius: 10,
+                    fontSize: 12,
+                  }}
+                >
+                  {message}
+                </div>
+              )}
+              <LoadingButton
+                type="submit"
+                loading={loading}
+                style={{
+                  border: "none",
+                  borderRadius: 12,
+                  padding: "12px 14px",
+                  background: "var(--accent)",
+                  color: "white",
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  opacity: loading ? 0.7 : 1,
+                  transition: "transform 0.18s ease, box-shadow 0.18s ease",
+                }}
+                onMouseEnter={(e) => {
+                  (e.currentTarget as HTMLElement).style.transform = "translateY(-1px)";
+                  (e.currentTarget as HTMLElement).style.boxShadow = "0 10px 20px rgba(99,102,241,0.35)";
+                }}
+                onMouseLeave={(e) => {
+                  (e.currentTarget as HTMLElement).style.transform = "translateY(0)";
+                  (e.currentTarget as HTMLElement).style.boxShadow = "none";
+                }}
+              >
+                {loading ? "Updating..." : "Update password"}
+              </LoadingButton>
+            </form>
+          )}
+        </div>
       </div>
     </div>
   );

@@ -345,7 +345,9 @@ export default function Notes() {
                     border: activeNote.color === c.id ? "2px solid white" : "2px solid transparent",
                   }}
                   title={c.label}
-                />
+                >
+                  <span style={{ position: "absolute", opacity: 0, pointerEvents: "none" }}>{c.label}</span>
+                </LoadingButton>
               ))}
             </div>
 

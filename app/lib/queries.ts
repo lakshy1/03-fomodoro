@@ -8,6 +8,13 @@ type ProfileRecord = {
 
 type DayDatum = { date: string; minutes: number };
 type LeaderboardEntry = { name: string; days: DayDatum[]; total: number };
+type FriendRequestRow = {
+  id: string;
+  direction: "incoming" | "outgoing";
+  name: string;
+  publicId: string;
+  createdAt: string;
+};
 
 const CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const makeCode = () =>
@@ -147,7 +154,7 @@ export async function fetchLeaderboardRange(
 }
 
 // Fetch pending friend requests both incoming and outgoing.
-export async function fetchFriendRequests(userId: string) {
+export async function fetchFriendRequests(userId: string): Promise<FriendRequestRow[]> {
   const { data } = await supabase
     .from("friend_requests")
     .select("id, requester_id, addressee_id, status, created_at")
@@ -173,7 +180,7 @@ export async function fetchFriendRequests(userId: string) {
     const meta = map.get(otherId) || { name: "Friend", publicId: "------" };
     return {
       id: r.id,
-      direction: r.addressee_id === userId ? "incoming" : "outgoing",
+      direction: (r.addressee_id === userId ? "incoming" : "outgoing") as "incoming" | "outgoing",
       name: meta.name,
       publicId: meta.publicId,
       createdAt: r.created_at,

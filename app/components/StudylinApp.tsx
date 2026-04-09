@@ -1210,8 +1210,10 @@ export default function StudylinApp() {
     if (!userId) return;
     let mounted = true;
     async function loadCalendar() {
+      const uid = userId;
+      if (!uid) return;
       const last28 = buildLastNDays(28);
-      const data = await fetchCalendarRange(userId, last28[0], last28[last28.length - 1]);
+      const data = await fetchCalendarRange(uid, last28[0], last28[last28.length - 1]);
       if (!mounted) return;
       const byDate = new Map<string, number>();
       data.forEach((row) => byDate.set(row.date, (byDate.get(row.date) || 0) + row.minutes));
@@ -1248,10 +1250,12 @@ export default function StudylinApp() {
     if (!userId) return;
     let mounted = true;
     async function loadLeaderboard() {
+      const uid = userId;
+      if (!uid) return;
       const now = new Date();
       const monthDays = buildMonthDays(now.getFullYear(), now.getMonth());
       const days = leaderboardRange === "month" ? monthDays : buildLastNDays(7);
-      const rows = await fetchLeaderboardRange(userId, days[0], days[days.length - 1], days);
+      const rows = await fetchLeaderboardRange(uid, days[0], days[days.length - 1], days);
       if (!mounted) return;
       setLeaderboard(rows);
       setLeaderboardLoading(false);
@@ -1266,7 +1270,9 @@ export default function StudylinApp() {
     if (!userId) return;
     let mounted = true;
     async function loadRequests() {
-      const data = await fetchFriendRequests(userId);
+      const uid = userId;
+      if (!uid) return;
+      const data = await fetchFriendRequests(uid);
       if (!mounted) return;
       setRequests(data);
       setRequestsLoading(false);

@@ -118,7 +118,11 @@ export default function TodoList() {
                 marginRight: 4,
                 opacity: priority === p ? 1 : 0.4,
               }}
-            />
+            >
+              <span style={{ position: "absolute", opacity: 0, pointerEvents: "none" }}>
+                {PRIORITY_META[p].label}
+              </span>
+            </LoadingButton>
           ))}
         </div>
 

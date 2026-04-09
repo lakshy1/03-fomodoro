@@ -18,6 +18,8 @@ export default function AuthPage() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const { push } = useToast();
+  const [shakeKey, setShakeKey] = useState(0);
   const cardRef = useRef<HTMLDivElement | null>(null);
   const orbRef = useRef<HTMLDivElement | null>(null);
   const glowRef = useRef<HTMLDivElement | null>(null);
@@ -496,5 +498,3 @@ function GlowInput({
     </div>
   );
 }
-  const { push } = useToast();
-  const [shakeKey, setShakeKey] = useState(0);
