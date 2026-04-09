@@ -69,10 +69,10 @@ const monthLabel = (iso: string) => {
 };
 const rangeLabel = (iso: string) => iso.slice(5);
 const formatMinutes = (min: number) => {
-  if (min < 60) return `${min}m`;
+  if (min < 60) return `${min} m`;
   const h = Math.floor(min / 60);
   const m = min % 60;
-  return m ? `${h}h ${m}m` : `${h}h`;
+  return m ? `${h} h ${m} m` : `${h} h`;
 };
 
 /* ── Typewriter text — types in on mount, re-mounts on key flip ─ */
@@ -919,11 +919,13 @@ function LeaderboardPanel({
   loading,
   range,
   onRangeChange,
+  onRefresh,
 }: {
   rows: LeaderboardEntry[];
   loading: boolean;
   range: LeaderboardRange;
   onRangeChange: (r: LeaderboardRange) => void;
+  onRefresh: () => void;
 }) {
   if (loading) {
     return (
@@ -935,39 +937,58 @@ function LeaderboardPanel({
   }
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <div
-        style={{
-          display: "flex",
-          gap: 8,
-          background: "var(--glass-1)",
-          border: "1px solid var(--glass-border)",
-          borderRadius: 999,
-          padding: 4,
-          width: "fit-content",
-          scrollSnapAlign: "start",
-        }}
-      >
-        {[
-          { key: "last7", label: "Last 7 days" },
-          { key: "month", label: "This month" },
-        ].map((opt) => (
-          <LoadingButton
-            key={opt.key}
-            onClick={() => onRangeChange(opt.key as LeaderboardRange)}
-            style={{
-              border: "none",
-              padding: "6px 12px",
-              borderRadius: 999,
-              background: range === opt.key ? "var(--accent-dim)" : "transparent",
-              color: range === opt.key ? "var(--accent-text)" : "var(--text-3)",
-              cursor: "pointer",
-              fontSize: 12,
-              fontWeight: 600,
-            }}
-          >
-            {opt.label}
-          </LoadingButton>
-        ))}
+      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+        <div
+          style={{
+            display: "flex",
+            gap: 8,
+            background: "var(--glass-1)",
+            border: "1px solid var(--glass-border)",
+            borderRadius: 999,
+            padding: 4,
+            width: "fit-content",
+            scrollSnapAlign: "start",
+          }}
+        >
+          {[
+            { key: "last7", label: "Last 7 days" },
+            { key: "month", label: "This month" },
+          ].map((opt) => (
+            <LoadingButton
+              key={opt.key}
+              onClick={() => onRangeChange(opt.key as LeaderboardRange)}
+              style={{
+                border: "none",
+                padding: "6px 12px",
+                borderRadius: 999,
+                background: range === opt.key ? "var(--accent-dim)" : "transparent",
+                color: range === opt.key ? "var(--accent-text)" : "var(--text-3)",
+                cursor: "pointer",
+                fontSize: 12,
+                fontWeight: 600,
+              }}
+            >
+              {opt.label}
+            </LoadingButton>
+          ))}
+        </div>
+        <LoadingButton
+          onClick={onRefresh}
+          loading={loading}
+          style={{
+            border: "1px solid var(--glass-border)",
+            borderRadius: 999,
+            background: "var(--glass-1)",
+            color: "var(--text-2)",
+            padding: "6px 12px",
+            fontSize: 12,
+            fontWeight: 600,
+            cursor: "pointer",
+          }}
+          title="Refresh leaderboard"
+        >
+          Refresh
+        </LoadingButton>
       </div>
       <div
         style={{
@@ -1056,6 +1077,7 @@ export default function StudylinApp() {
   const [requestsLoading, setRequestsLoading] = useState(true);
   const [leaderboardLoading, setLeaderboardLoading] = useState(true);
   const [leaderboardRange, setLeaderboardRange] = useState<LeaderboardRange>("last7");
+  const [profileSaveTick, setProfileSaveTick] = useState(0);
   const [requests, setRequests] = useState<FriendRequest[]>([]);
   const [profileStats, setProfileStats] = useState({ total: 0, streak: 0, bestDay: "" });
   const [realtimeFriendIds, setRealtimeFriendIds] = useState<string[]>([]);
@@ -1210,6 +1232,7 @@ export default function StudylinApp() {
         avatar_url: profile.avatarUrl,
       });
       setProfileDirty(false);
+      setProfileSaveTick((n) => n + 1);
     }, 700);
     return () => clearTimeout(t);
   }, [profile, profileDirty, userId]);
@@ -1265,6 +1288,15 @@ export default function StudylinApp() {
   useEffect(() => {
     refreshLeaderboard();
   }, [refreshLeaderboard]);
+
+  useEffect(() => {
+    if (!userId) return;
+    refreshLeaderboard();
+  }, [profileSaveTick, refreshLeaderboard, userId]);
+
+  useEffect(() => {
+    if (view === "leaderboard") refreshLeaderboard();
+  }, [view, refreshLeaderboard]);
 
   const refreshRequests = useCallback(async () => {
     if (!userId) return;
@@ -1435,6 +1467,7 @@ export default function StudylinApp() {
         loading={leaderboardLoading}
         range={leaderboardRange}
         onRangeChange={setLeaderboardRange}
+        onRefresh={refreshLeaderboard}
       />
     ),
     "add-friend": (

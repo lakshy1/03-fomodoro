@@ -145,7 +145,7 @@ export async function fetchLeaderboardRange(
     const daysData = days.map((d) => ({ date: d, minutes: map.get(d) || 0 }));
     const total = daysData.reduce((a, b) => a + b.minutes, 0);
     return {
-      name: id === userId ? "You" : names.get(id) || "Friend",
+      name: names.get(id) || "User",
       days: daysData,
       total,
     };
