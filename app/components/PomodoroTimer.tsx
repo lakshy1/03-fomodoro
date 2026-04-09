@@ -235,7 +235,16 @@ export default function PomodoroTimer() {
       >
         <Stat label="Sessions" value={sessions.toString()} color="var(--accent)" />
         <div style={{ width: 1, height: 32, background: "var(--glass-border)" }} />
-        <Stat label="Focus time" value={`${totalMinutes}m`} color="#10b981" />
+        <Stat
+          label="Focus time"
+          value={
+            <span style={{ display: "inline-flex", alignItems: "baseline", gap: 6 }}>
+              <span>{totalMinutes}</span>
+              <span>m</span>
+            </span>
+          }
+          color="#10b981"
+        />
         <div style={{ width: 1, height: 32, background: "var(--glass-border)" }} />
         <Stat label="Daily goal" value={`${Math.min(sessions, 8)}/8`} color="#06b6d4" />
       </div>
@@ -264,13 +273,13 @@ export default function PomodoroTimer() {
   );
 }
 
-function Stat({ label, value, color }: { label: string; value: string; color: string }) {
+function Stat({ label, value, color }: { label: string; value: React.ReactNode; color: string }) {
   return (
     <div className="flex flex-col items-center gap-0.5 flex-1">
       <span className="text-xl font-semibold" style={{ color }}>
         {value}
       </span>
-      <span className="text-xs" style={{ color: "var(--text-3)" }}>
+      <span className="text-xs" style={{ color: "var(--text-3)", whiteSpace: "nowrap" }}>
         {label}
       </span>
     </div>
