@@ -224,6 +224,9 @@ export async function createFriendRequestByCode(userId: string, code: string) {
     created_at: new Date().toISOString(),
   });
   if (insertError) {
+    if ((insertError as { code?: string }).code === "23505") {
+      throw new Error("Request already sent.");
+    }
     throw new Error("Unable to send request.");
   }
 }
@@ -238,10 +241,15 @@ export async function acceptFriendRequest(userId: string, requestId: string) {
   if (updateError) {
     throw new Error("Unable to accept request.");
   }
-  const { error: insertError } = await supabase.from("friends").insert([
-    { user_id: data.requester_id, friend_id: data.addressee_id },
-    { user_id: data.addressee_id, friend_id: data.requester_id },
-  ]);
+  const { error: insertError } = await supabase
+    .from("friends")
+    .upsert(
+      [
+        { user_id: data.requester_id, friend_id: data.addressee_id },
+        { user_id: data.addressee_id, friend_id: data.requester_id },
+      ],
+      { onConflict: "user_id,friend_id" }
+    );
   if (insertError) {
     throw new Error("Unable to create friend link.");
   }
