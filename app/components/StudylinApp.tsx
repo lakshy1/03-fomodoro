@@ -27,28 +27,31 @@ const Notes         = dynamic(() => import("./Notes"),         { ssr: false });
 const KanbanBoard   = dynamic(() => import("./KanbanBoard"),   { ssr: false });
 
 // ─── Workspace loading screen ────────────────────────────────────────────────
-const LOADER_MESSAGES = [
-  "Preparing your workspace…",
-  "Syncing your sessions…",
-  "Loading your tasks…",
-  "Almost there…",
-  "Get ready to focus!",
-];
-const LOADER_DURATION = 5; // seconds
 const LOADER_R = 44;
 const LOADER_CIRC = 2 * Math.PI * LOADER_R;
 
-function WorkspaceLoader() {
+function WorkspaceLoader({ authReady }: { authReady: boolean }) {
   const [tick, setTick] = useState(0);
+  const [dots, setDots] = useState(".");
+
   useEffect(() => {
     const id = setInterval(() => setTick((t) => t + 1), 1000);
     return () => clearInterval(id);
   }, []);
-  const elapsed = Math.min(tick, LOADER_DURATION);
-  const remaining = LOADER_DURATION - elapsed;
-  const progress = elapsed / LOADER_DURATION;
-  const dashOffset = LOADER_CIRC * (1 - progress);
-  const msgIdx = Math.min(elapsed, LOADER_MESSAGES.length - 1);
+
+  // Animate "..." after countdown finishes
+  useEffect(() => {
+    if (tick < 3) return;
+    const id = setInterval(() => setDots((d) => d.length >= 3 ? "." : d + "."), 400);
+    return () => clearInterval(id);
+  }, [tick]);
+
+  const counting = tick < 3; // still in 3→2→1 phase
+  const remaining = counting ? 3 - tick : 0; // 3, 2, 1
+
+  // Ring: drains fully over 3s during countdown, then spins during loading
+  const countProgress = Math.min(tick / 3, 1);
+  const dashOffset = counting ? LOADER_CIRC * (1 - countProgress) : 0; // full arc when loading
 
   return (
     <div
@@ -58,19 +61,21 @@ function WorkspaceLoader() {
         flexDirection: "column",
         alignItems: "center",
         justifyContent: "center",
-        gap: 24,
+        gap: 28,
         background:
           "radial-gradient(1200px 600px at 20% 0%, var(--mesh-a), transparent), radial-gradient(800px 400px at 80% 20%, var(--mesh-b), transparent), var(--bg-base)",
       }}
     >
-      {/* Ring */}
-      <div style={{ position: "relative", width: 120, height: 120 }}>
-        <svg width="120" height="120" viewBox="0 0 120 120" style={{ overflow: "visible" }}>
+      {/* Ring + center content */}
+      <div style={{ position: "relative", width: 140, height: 140 }}>
+        <svg width="140" height="140" viewBox="0 0 140 140" style={{ overflow: "visible" }}>
+          {/* Glow backdrop */}
+          <circle cx="70" cy="70" r={LOADER_R + 6} fill="var(--accent-dim)" />
           {/* Track */}
-          <circle cx="60" cy="60" r={LOADER_R} fill="none" stroke="var(--glass-border)" strokeWidth="5" />
-          {/* Progress arc */}
+          <circle cx="70" cy="70" r={LOADER_R} fill="none" stroke="var(--glass-border)" strokeWidth="5" />
+          {/* Arc — drains during countdown, spins during loading */}
           <circle
-            cx="60" cy="60" r={LOADER_R}
+            cx="70" cy="70" r={LOADER_R}
             fill="none"
             stroke="var(--accent)"
             strokeWidth="5"
@@ -79,43 +84,66 @@ function WorkspaceLoader() {
             strokeDashoffset={dashOffset}
             className="ring-progress"
             style={{
-              transition: "stroke-dashoffset 0.9s cubic-bezier(0.16,1,0.3,1)",
-              filter: "drop-shadow(0 0 8px var(--accent-glow))",
+              transition: counting ? "stroke-dashoffset 0.9s cubic-bezier(0.16,1,0.3,1)" : "none",
+              filter: "drop-shadow(0 0 10px var(--accent-glow))",
+              animation: !counting && !authReady ? "ld-spin 1.2s linear infinite" : "none",
             }}
           />
         </svg>
-        {/* Countdown number */}
+
+        {/* Center: big number during countdown, spinner dot during loading */}
         <div
+          key={counting ? remaining : "loading"}
+          className="fade-in"
           style={{
-            position: "absolute",
-            inset: 0,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            fontFamily: "var(--font-mono), monospace",
-            fontSize: 36,
-            fontWeight: 700,
-            color: "var(--text-1)",
-            letterSpacing: "-1px",
+            position: "absolute", inset: 0,
+            display: "flex", alignItems: "center", justifyContent: "center",
           }}
         >
-          {remaining}
+          {counting ? (
+            <span
+              style={{
+                fontFamily: "var(--font-mono), monospace",
+                fontSize: 56,
+                fontWeight: 800,
+                color: "var(--text-1)",
+                letterSpacing: "-3px",
+                lineHeight: 1,
+              }}
+            >
+              {remaining}
+            </span>
+          ) : (
+            <span
+              style={{
+                fontSize: 11,
+                fontWeight: 600,
+                color: "var(--accent-text)",
+                letterSpacing: "0.12em",
+                textTransform: "uppercase",
+              }}
+            >
+              Loading
+            </span>
+          )}
         </div>
       </div>
 
       {/* Message */}
       <p
-        key={msgIdx}
-        className="fade-in"
         style={{
-          fontSize: 14,
+          fontSize: 13,
           fontWeight: 500,
           color: "var(--text-2)",
-          letterSpacing: "0.02em",
+          letterSpacing: "0.03em",
           margin: 0,
+          minWidth: "10ch",
+          textAlign: "center",
         }}
       >
-        {LOADER_MESSAGES[msgIdx]}
+        {counting
+          ? ["Get ready…", "Almost there…", "Preparing…"][3 - remaining - 1] ?? "Get ready…"
+          : `Loading${dots}`}
       </p>
     </div>
   );
@@ -146,20 +174,31 @@ type FriendRequest = {
 };
 type LeaderboardRange = "last7" | "month";
 
+// All dates are anchored to IST (Asia/Kolkata, UTC+5:30) so the day resets at 12:00 AM IST.
+const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000; // +05:30 in milliseconds
+const toISTDate = (utcMs: number): string => {
+  const ist = new Date(utcMs + IST_OFFSET_MS);
+  return ist.toISOString().slice(0, 10); // "YYYY-MM-DD" in IST
+};
+const todayIST = () => toISTDate(Date.now());
+
 const DAY_MS = 24 * 60 * 60 * 1000;
-const toISODate = (d: Date) => d.toISOString().slice(0, 10);
 const buildLastNDays = (n: number) =>
-  Array.from({ length: n }, (_, i) => {
-    const dt = new Date(Date.now() - (n - 1 - i) * DAY_MS);
-    return toISODate(dt);
-  });
+  Array.from({ length: n }, (_, i) =>
+    toISTDate(Date.now() - (n - 1 - i) * DAY_MS)
+  );
 const buildMonthDays = (year: number, month: number) => {
-  const first = new Date(year, month, 1);
+  // Build month days by iterating IST day boundaries
   const days: string[] = [];
-  const d = new Date(first);
-  while (d.getMonth() === month) {
-    days.push(toISODate(d));
-    d.setDate(d.getDate() + 1);
+  // Start at 00:00 IST on the 1st of the given month
+  const startIST = new Date(Date.UTC(year, month, 1) - IST_OFFSET_MS); // UTC time that equals midnight IST on 1st
+  const d = new Date(startIST);
+  while (true) {
+    const label = toISTDate(d.getTime() + IST_OFFSET_MS);
+    const [y, m] = label.split("-").map(Number);
+    if (y !== year || m - 1 !== month) break;
+    days.push(label);
+    d.setUTCDate(d.getUTCDate() + 1);
   }
   return days;
 };
@@ -1484,8 +1523,9 @@ export default function StudylinApp() {
   const refreshLeaderboard = useCallback(async () => {
     if (!userId) return;
     setLeaderboardLoading(true);
-    const now = new Date();
-    const monthDays = buildMonthDays(now.getFullYear(), now.getMonth());
+    const todayStr = todayIST();
+    const [y, m] = todayStr.split("-").map(Number);
+    const monthDays = buildMonthDays(y, m - 1);
     const days = leaderboardRange === "month" ? monthDays : buildLastNDays(7);
     const rows = await fetchLeaderboardRange(userId, days[0], days[days.length - 1], days, profile.name);
     if (!mountedRef.current) return;
@@ -1594,7 +1634,7 @@ export default function StudylinApp() {
 
   const handleSyncMinutes = useCallback(async (minutes: number) => {
     if (!userId || minutes <= 0) return;
-    const today = new Date().toISOString().slice(0, 10);
+    const today = todayIST();
     await saveFocusMinutes(userId, today, minutes);
     refreshCalendar();
     refreshLeaderboard();
@@ -1605,7 +1645,7 @@ export default function StudylinApp() {
   const displayInitial = (displayName[0] || "U").toUpperCase();
 
   if (!authReady) {
-    return <WorkspaceLoader />;
+    return <WorkspaceLoader authReady={authReady} />;
   }
   const showSidebar = !isMobile || mobileOpen;
   const viewComponents: Record<View, React.ReactNode> = {
