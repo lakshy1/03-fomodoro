@@ -351,9 +351,10 @@ body::before {
   animation: pulse-glow 2.6s ease-in-out infinite;
 }
 
-/* SVG ring counter-rotate */
+/* SVG ring counter-rotate — fill-box makes transform-origin relative to the element's own bounding box */
 .ring-progress {
   transform: rotate(-90deg);
+  transform-box: fill-box;
   transform-origin: center;
 }
 

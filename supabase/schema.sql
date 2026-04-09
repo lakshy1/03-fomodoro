@@ -22,6 +22,10 @@ create table if not exists public.study_sessions (
 
 create index if not exists study_sessions_user_date_idx on public.study_sessions(user_id, date);
 
+-- Unique constraint so per-minute upserts never create duplicate rows for the same day
+alter table public.study_sessions
+  add constraint if not exists study_sessions_user_date_unique unique (user_id, date);
+
 -- FRIEND REQUESTS
 create table if not exists public.friend_requests (
   id uuid primary key default uuid_generate_v4(),
@@ -87,10 +91,17 @@ create policy "profiles_insert_own"
   on public.profiles for insert
   with check (auth.uid() = id);
 
--- Study sessions: only own
-create policy "sessions_read_own"
+-- Study sessions: own + friends (friends needed for leaderboard)
+create policy "sessions_read_own_and_friends"
   on public.study_sessions for select
-  using (auth.uid() = user_id);
+  using (
+    auth.uid() = user_id
+    or exists (
+      select 1 from public.friends
+      where friends.user_id = auth.uid()
+        and friends.friend_id = study_sessions.user_id
+    )
+  );
 
 create policy "sessions_write_own"
   on public.study_sessions for insert
@@ -121,6 +132,9 @@ create policy "friends_read_own"
 create policy "friends_insert_participant"
   on public.friends for insert
   with check (auth.uid() = user_id or auth.uid() = friend_id);
+
+-- Realtime: study_sessions changes broadcast to subscribers (leaderboard live updates)
+alter publication supabase_realtime add table public.study_sessions;
 
 -- Prevent duplicate pending requests
 create unique index if not exists friend_requests_unique_pair

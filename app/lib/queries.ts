@@ -325,21 +325,28 @@ export async function declineFriendRequest(userId: string, requestId: string) {
 // Upsert focus minutes for a given date (called every minute while timer runs and on session complete).
 export async function saveFocusMinutes(userId: string, date: string, minutesToAdd: number): Promise<void> {
   if (!userId || minutesToAdd <= 0) return;
-  const { data } = await supabase
+  const { data, error: selectErr } = await supabase
     .from("study_sessions")
-    .select("id, minutes")
+    .select("minutes")
     .eq("user_id", userId)
     .eq("date", date)
     .maybeSingle();
+  if (selectErr) {
+    console.error("[FomoDoro] saveFocusMinutes select:", selectErr.message, selectErr.code);
+    return;
+  }
   if (data) {
-    await supabase
+    const { error: updateErr } = await supabase
       .from("study_sessions")
-      .update({ minutes: data.minutes + minutesToAdd })
-      .eq("id", data.id);
+      .update({ minutes: (data.minutes ?? 0) + minutesToAdd })
+      .eq("user_id", userId)
+      .eq("date", date);
+    if (updateErr) console.error("[FomoDoro] saveFocusMinutes update:", updateErr.message, updateErr.code);
   } else {
-    await supabase
+    const { error: insertErr } = await supabase
       .from("study_sessions")
       .insert({ user_id: userId, date, minutes: minutesToAdd });
+    if (insertErr) console.error("[FomoDoro] saveFocusMinutes insert:", insertErr.message, insertErr.code);
   }
 }
 
