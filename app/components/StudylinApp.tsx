@@ -741,8 +741,13 @@ function RequestsPanel({
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
             {req.direction === "incoming" ? (
               <>
+                {(() => {
+                  const isBusy = busyIds.includes(req.id);
+                  return (
+                    <>
                 <LoadingButton
-                  loading={busyIds.includes(req.id)}
+                  compact
+                  loading={isBusy}
                   onClick={async () => {
                     setBusyIds((s) => [...s, req.id]);
                     await onDecline(req.id);
@@ -756,13 +761,19 @@ function RequestsPanel({
                     background: "rgba(239,68,68,0.15)",
                     color: "#ef4444",
                     cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    padding: 0,
+                    overflow: "hidden",
                   }}
                   title="Decline"
                 >
-                  ✕
+                  {isBusy ? "" : "✕"}
                 </LoadingButton>
                 <LoadingButton
-                  loading={busyIds.includes(req.id)}
+                  compact
+                  loading={isBusy}
                   onClick={async () => {
                     setBusyIds((s) => [...s, req.id]);
                     await onAccept(req.id);
@@ -776,11 +787,19 @@ function RequestsPanel({
                     background: "rgba(34,197,94,0.15)",
                     color: "#22c55e",
                     cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    padding: 0,
+                    overflow: "hidden",
                   }}
                   title="Accept"
                 >
-                  ✓
+                  {isBusy ? "" : "✓"}
                 </LoadingButton>
+                    </>
+                  );
+                })()}
               </>
             ) : (
               <span style={{ fontSize: 11, color: "var(--text-3)" }}>Pending</span>

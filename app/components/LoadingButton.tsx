@@ -5,6 +5,7 @@ import React, { type ButtonHTMLAttributes, type ReactNode } from "react";
 type LoadingButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
   loading?: boolean;
   spinnerColor?: string;
+  compact?: boolean;
   children: ReactNode;
 };
 
@@ -15,12 +16,15 @@ const LoadingButton = (
   className,
   children,
   spinnerColor,
+  compact = false,
   style,
   ...props
 }: LoadingButtonProps,
   ref: React.Ref<HTMLButtonElement>
 ) => {
   const isDisabled = disabled || loading;
+  const showChildren = !(compact && loading);
+  const gap = compact ? 4 : 8;
   return (
     <button
       ref={ref}
@@ -29,8 +33,8 @@ const LoadingButton = (
       className={`${className ? className + " " : ""}ld-btn`}
       style={{ position: "relative", ...style, ...(isDisabled ? { cursor: "not-allowed" } : {}) }}
     >
-      <span style={{ opacity: loading ? 0.85 : 1, display: "inline-flex", alignItems: "center", gap: 8 }}>
-        {children}
+      <span style={{ opacity: loading ? 0.85 : 1, display: "inline-flex", alignItems: "center", gap }}>
+        {showChildren && children}
         {loading && (
           <span
             className="ld-spinner-inline"
