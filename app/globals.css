@@ -186,6 +186,9 @@
   .auth-grid {
     grid-template-columns: 1fr !important;
   }
+  .auth-side {
+    display: none !important;
+  }
   .auth-grid > div {
     min-height: unset !important;
   }

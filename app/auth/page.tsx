@@ -251,6 +251,7 @@ export default function AuthPage() {
         className="auth-grid"
       >
         <div
+          className="auth-side"
           style={{
             background: "linear-gradient(145deg, rgba(15,19,36,0.9), rgba(6,8,16,0.85))",
             border: "1px solid rgba(99,102,241,0.15)",
