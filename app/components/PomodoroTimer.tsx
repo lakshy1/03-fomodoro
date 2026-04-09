@@ -25,6 +25,34 @@ function pad(n: number) { return n.toString().padStart(2, "0"); }
    PipTimerContent — rendered inside the Document PiP window.
    Icon-only buttons, fully responsive via vmin/vh/vw units.
 ───────────────────────────────────────────────────────────── */
+function MacDot({
+  bg, hoverBg, symbol, title, onClick,
+}: {
+  bg: string; hoverBg: string; symbol: string; title: string; onClick: () => void;
+}) {
+  const [hovered, setHovered] = useState(false);
+  return (
+    <button
+      onClick={onClick}
+      title={title}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        width: 11, height: 11, borderRadius: "50%",
+        border: "none", padding: 0, cursor: "pointer",
+        background: hovered ? hoverBg : bg,
+        display: "flex", alignItems: "center", justifyContent: "center",
+        flexShrink: 0,
+        transition: "background 0.12s ease",
+        fontSize: 7, fontWeight: 900, lineHeight: 1,
+        color: "rgba(0,0,0,0.6)",
+      }}
+    >
+      {hovered ? symbol : null}
+    </button>
+  );
+}
+
 function PipTimerContent() {
   const { state, toggle, reset } = usePomodoroStore();
   const { mode, timeLeft, running, settings } = state;
@@ -45,8 +73,7 @@ function PipTimerContent() {
     <div
       style={{
         width: "100vw", height: "100vh",
-        display: "flex", alignItems: "center",
-        gap: 18, padding: "0 20px",
+        display: "flex", flexDirection: "column",
         background:
           "radial-gradient(ellipse 140% 100% at 10% 20%, rgba(99,102,241,0.14), transparent 55%)," +
           "#06080f",
@@ -56,100 +83,144 @@ function PipTimerContent() {
         WebkitFontSmoothing: "antialiased",
       } as React.CSSProperties}
     >
-      {/* ── Ring dial — fixed small square ── */}
-      <div style={{ flexShrink: 0, width: 90, height: 90 }}>
-        <svg
-          width="100%" height="100%"
-          viewBox="0 0 100 100"
+      {/* ── Mac traffic-light bar ── */}
+      <div
+        style={{
+          height: 22, flexShrink: 0,
+          display: "flex", alignItems: "center",
+          padding: "0 10px", gap: 6,
+          borderBottom: "1px solid rgba(255,255,255,0.05)",
+        }}
+      >
+        <MacDot
+          bg="rgba(239,68,68,0.75)" hoverBg="#ef4444"
+          symbol="×" title="Close"
+          onClick={() => window.close()}
+        />
+        <MacDot
+          bg="rgba(245,158,11,0.70)" hoverBg="#f59e0b"
+          symbol="−" title="Minimise"
+          onClick={() => { try { window.resizeTo(window.outerWidth, 22); } catch {} }}
+        />
+        <MacDot
+          bg="rgba(34,197,94,0.65)" hoverBg="#22c55e"
+          symbol="↗" title="Switch to app"
+          onClick={() => { try { (window.opener as Window | null)?.focus(); } catch {} window.close(); }}
+        />
+        <span
           style={{
-            overflow: "visible",
-            filter: running ? `drop-shadow(0 0 7px ${color}55)` : "none",
-            transition: "filter 0.5s ease",
+            flex: 1, textAlign: "center",
+            fontSize: 9, fontWeight: 600,
+            color: "rgba(255,255,255,0.22)",
+            letterSpacing: "0.08em", textTransform: "uppercase",
+            pointerEvents: "none", userSelect: "none",
           }}
         >
-          <circle cx="50" cy="50" r="47" fill="rgba(255,255,255,0.03)" stroke="rgba(255,255,255,0.05)" strokeWidth="0.5"/>
-          <circle cx="50" cy="50" r={PIP_R} fill="none" stroke="rgba(255,255,255,0.07)" strokeWidth="4.5"/>
-          <circle
-            cx="50" cy="50" r={PIP_R}
-            fill="none" stroke={color} strokeWidth="4.5" strokeLinecap="round"
-            strokeDasharray={PIP_CIRCUM} strokeDashoffset={dashOffset}
-            style={{
-              transform: "rotate(-90deg)",
-              transformBox: "fill-box",
-              transformOrigin: "center",
-              transition: "stroke-dashoffset 0.85s ease, stroke 0.4s ease",
-            }}
-          />
-          <text
-            x="50" y="46" textAnchor="middle" dominantBaseline="middle"
-            fill="rgba(255,255,255,0.93)" fontSize="19" fontWeight="700"
-            fontFamily="ui-monospace,'SF Mono',Consolas,monospace" letterSpacing="-0.5"
-          >
-            {mins}:{secs}
-          </text>
-          <text
-            x="50" y="63" textAnchor="middle"
-            fill={color} fontSize="5.5" fontWeight="600" letterSpacing="1.4" opacity="0.9"
-          >
-            {modeShort}
-          </text>
-        </svg>
+          FomoDoro
+        </span>
       </div>
 
-      {/* ── Buttons — two small circles side by side ── */}
-      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-        {/* Play / Pause */}
-        <button
-          onClick={toggle}
-          style={{
-            width: 44, height: 44, borderRadius: "50%",
-            background: running ? "rgba(99,102,241,0.22)" : color,
-            border: `1.5px solid ${running ? "rgba(99,102,241,0.4)" : "transparent"}`,
-            display: "flex", alignItems: "center", justifyContent: "center",
-            cursor: "pointer",
-            boxShadow: running ? "none" : `0 2px 14px ${color}55`,
-            transition: "all 0.18s ease",
-            padding: 0, flexShrink: 0,
-          }}
-        >
-          {running ? (
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="rgba(255,255,255,0.9)">
-              <rect x="6" y="4" width="4" height="16" rx="1"/>
-              <rect x="14" y="4" width="4" height="16" rx="1"/>
-            </svg>
-          ) : (
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="rgba(255,255,255,0.9)">
-              <polygon points="6,3 20,12 6,21"/>
-            </svg>
-          )}
-        </button>
-
-        {/* Reset */}
-        <button
-          onClick={reset}
-          style={{
-            width: 36, height: 36, borderRadius: "50%",
-            background: "rgba(255,255,255,0.05)",
-            border: "1.5px solid rgba(255,255,255,0.10)",
-            display: "flex", alignItems: "center", justifyContent: "center",
-            cursor: "pointer",
-            transition: "all 0.18s ease",
-            padding: 0, flexShrink: 0,
-          }}
-          onMouseEnter={e => {
-            (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.10)";
-            (e.currentTarget as HTMLElement).style.borderColor = "rgba(255,255,255,0.18)";
-          }}
-          onMouseLeave={e => {
-            (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.05)";
-            (e.currentTarget as HTMLElement).style.borderColor = "rgba(255,255,255,0.10)";
-          }}
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.5)" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
-            <path d="M3 3v5h5"/>
+      {/* ── Ring + buttons row ── */}
+      <div
+        style={{
+          flex: 1, minHeight: 0,
+          display: "flex", alignItems: "center",
+          gap: 14, padding: "0 16px",
+        }}
+      >
+        {/* Ring */}
+        <div style={{ flexShrink: 0, width: 76, height: 76 }}>
+          <svg
+            width="100%" height="100%"
+            viewBox="0 0 100 100"
+            style={{
+              overflow: "visible",
+              filter: running ? `drop-shadow(0 0 7px ${color}55)` : "none",
+              transition: "filter 0.5s ease",
+            }}
+          >
+            <circle cx="50" cy="50" r="47" fill="rgba(255,255,255,0.03)" stroke="rgba(255,255,255,0.05)" strokeWidth="0.5"/>
+            <circle cx="50" cy="50" r={PIP_R} fill="none" stroke="rgba(255,255,255,0.07)" strokeWidth="5"/>
+            <circle
+              cx="50" cy="50" r={PIP_R}
+              fill="none" stroke={color} strokeWidth="5" strokeLinecap="round"
+              strokeDasharray={PIP_CIRCUM} strokeDashoffset={dashOffset}
+              style={{
+                transform: "rotate(-90deg)",
+                transformBox: "fill-box",
+                transformOrigin: "center",
+                transition: "stroke-dashoffset 0.85s ease, stroke 0.4s ease",
+              }}
+            />
+            <text
+              x="50" y="45" textAnchor="middle" dominantBaseline="middle"
+              fill="rgba(255,255,255,0.93)" fontSize="20" fontWeight="700"
+              fontFamily="ui-monospace,'SF Mono',Consolas,monospace" letterSpacing="-0.5"
+            >
+              {mins}:{secs}
+            </text>
+            <text
+              x="50" y="63" textAnchor="middle"
+              fill={color} fontSize="6" fontWeight="600" letterSpacing="1.2" opacity="0.9"
+            >
+              {modeShort}
+            </text>
           </svg>
-        </button>
+        </div>
+
+        {/* Buttons */}
+        <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
+          <button
+            onClick={toggle}
+            style={{
+              width: 40, height: 40, borderRadius: "50%",
+              background: running ? "rgba(99,102,241,0.22)" : color,
+              border: `1.5px solid ${running ? "rgba(99,102,241,0.4)" : "transparent"}`,
+              display: "flex", alignItems: "center", justifyContent: "center",
+              cursor: "pointer",
+              boxShadow: running ? "none" : `0 2px 12px ${color}55`,
+              transition: "all 0.18s ease",
+              padding: 0, flexShrink: 0,
+            }}
+          >
+            {running ? (
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="rgba(255,255,255,0.9)">
+                <rect x="6" y="4" width="4" height="16" rx="1"/>
+                <rect x="14" y="4" width="4" height="16" rx="1"/>
+              </svg>
+            ) : (
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="rgba(255,255,255,0.9)">
+                <polygon points="6,3 20,12 6,21"/>
+              </svg>
+            )}
+          </button>
+
+          <button
+            onClick={reset}
+            style={{
+              width: 32, height: 32, borderRadius: "50%",
+              background: "rgba(255,255,255,0.05)",
+              border: "1.5px solid rgba(255,255,255,0.10)",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              cursor: "pointer",
+              transition: "all 0.18s ease",
+              padding: 0, flexShrink: 0,
+            }}
+            onMouseEnter={e => {
+              (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.10)";
+              (e.currentTarget as HTMLElement).style.borderColor = "rgba(255,255,255,0.18)";
+            }}
+            onMouseLeave={e => {
+              (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.05)";
+              (e.currentTarget as HTMLElement).style.borderColor = "rgba(255,255,255,0.10)";
+            }}
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.5)" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+              <path d="M3 3v5h5"/>
+            </svg>
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -271,7 +342,7 @@ export default function PomodoroTimer({
         try {
           const pipWin: Window = await (
             window as unknown as { documentPictureInPicture: { requestWindow: (o: object) => Promise<Window> } }
-          ).documentPictureInPicture.requestWindow({ width: 340, height: 116 });
+          ).documentPictureInPicture.requestWindow({ width: 290, height: 120 });
 
           // Inject reset CSS — kill all scrollbars and overflow
           const style = pipWin.document.createElement("style");
@@ -299,7 +370,7 @@ export default function PomodoroTimer({
         popupRef.current = window.open(
           "/timer",
           "fomodoro-timer",
-          "width=340,height=140,resizable=yes,scrollbars=no,location=no,toolbar=no,menubar=no,status=no"
+          "width=290,height=154,resizable=yes,scrollbars=no,location=no,toolbar=no,menubar=no,status=no"
         );
       }
     };
