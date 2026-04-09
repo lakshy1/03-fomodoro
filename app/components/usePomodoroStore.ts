@@ -1,0 +1,320 @@
+"use client";
+
+import { useCallback, useEffect, useRef, useState } from "react";
+
+type Mode = "focus" | "short" | "long";
+
+export type PomodoroSettings = {
+  focusMinutes: number;
+  shortBreakMinutes: number;
+  longBreakMinutes: number;
+  dailyGoal: number;
+};
+
+type PomodoroState = {
+  mode: Mode;
+  timeLeft: number;
+  running: boolean;
+  sessions: number;
+  updatedAt: number;
+  settings: PomodoroSettings;
+};
+
+const STATE_KEY = "pomodoro_state_v1";
+const OWNER_KEY = "pomodoro_owner_v1";
+const CHANNEL = "pomodoro_channel_v1";
+const OWNER_TTL = 4000;
+
+const defaultSettings: PomodoroSettings = {
+  focusMinutes: 25,
+  shortBreakMinutes: 5,
+  longBreakMinutes: 15,
+  dailyGoal: 8,
+};
+
+const durationFor = (mode: Mode, settings: PomodoroSettings) => {
+  if (mode === "short") return settings.shortBreakMinutes * 60;
+  if (mode === "long") return settings.longBreakMinutes * 60;
+  return settings.focusMinutes * 60;
+};
+
+const readState = (): PomodoroState => {
+  if (typeof window === "undefined") {
+    return {
+      mode: "focus",
+      timeLeft: defaultSettings.focusMinutes * 60,
+      running: false,
+      sessions: 0,
+      updatedAt: Date.now(),
+      settings: defaultSettings,
+    };
+  }
+  try {
+    const raw = localStorage.getItem(STATE_KEY);
+    if (!raw) throw new Error("no state");
+    const parsed = JSON.parse(raw) as PomodoroState;
+    return {
+      ...parsed,
+      settings: { ...defaultSettings, ...(parsed.settings || {}) },
+    };
+  } catch {
+    return {
+      mode: "focus",
+      timeLeft: defaultSettings.focusMinutes * 60,
+      running: false,
+      sessions: 0,
+      updatedAt: Date.now(),
+      settings: defaultSettings,
+    };
+  }
+};
+
+const writeState = (state: PomodoroState) => {
+  try {
+    localStorage.setItem(STATE_KEY, JSON.stringify(state));
+  } catch {
+    // ignore
+  }
+};
+
+const readOwner = () => {
+  try {
+    const raw = localStorage.getItem(OWNER_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw) as { id: string; ts: number };
+  } catch {
+    return null;
+  }
+};
+
+const writeOwner = (id: string) => {
+  try {
+    localStorage.setItem(OWNER_KEY, JSON.stringify({ id, ts: Date.now() }));
+  } catch {
+    // ignore
+  }
+};
+
+export function usePomodoroStore(initialSettings?: Partial<PomodoroSettings>) {
+  const [state, setState] = useState<PomodoroState>(() => {
+    const base = readState();
+    const mergedSettings = { ...base.settings, ...(initialSettings || {}) };
+    const timeLeft = Math.min(base.timeLeft, durationFor(base.mode, mergedSettings)) || durationFor(base.mode, mergedSettings);
+    return { ...base, settings: mergedSettings, timeLeft };
+  });
+  const [lastComplete, setLastComplete] = useState<{ mode: Mode; minutes: number } | null>(null);
+  const channelRef = useRef<BroadcastChannel | null>(null);
+  const idRef = useRef<string>(Math.random().toString(36).slice(2));
+  const ownerRef = useRef<boolean>(false);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const emitState = useCallback((next: PomodoroState) => {
+    writeState(next);
+    channelRef.current?.postMessage({ type: "state", payload: next });
+  }, []);
+
+  const applyState = useCallback((updater: (prev: PomodoroState) => PomodoroState) => {
+    setState((prev) => {
+      const next = updater(prev);
+      const withTs = { ...next, updatedAt: Date.now() };
+      emitState(withTs);
+      return withTs;
+    });
+  }, [emitState]);
+
+  useEffect(() => {
+    channelRef.current = new BroadcastChannel(CHANNEL);
+    const channel = channelRef.current;
+    channel.onmessage = (event) => {
+      const msg = event.data as { type: string; payload?: PomodoroState; cmd?: string; value?: unknown };
+      if (msg.type === "state" && msg.payload) {
+        setState((prev) => (msg.payload!.updatedAt > prev.updatedAt ? msg.payload! : prev));
+      }
+      if (msg.type === "cmd" && ownerRef.current) {
+        handleCommand(msg.cmd, msg.value);
+      }
+    };
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === STATE_KEY && e.newValue) {
+        try {
+          const parsed = JSON.parse(e.newValue) as PomodoroState;
+          setState((prev) => (parsed.updatedAt > prev.updatedAt ? parsed : prev));
+        } catch {
+          // ignore
+        }
+      }
+    };
+    window.addEventListener("storage", onStorage);
+    return () => {
+      window.removeEventListener("storage", onStorage);
+      channel.close();
+      channelRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    const tickOwner = () => {
+      const owner = readOwner();
+      const now = Date.now();
+      if (!owner || now - owner.ts > OWNER_TTL) {
+        writeOwner(idRef.current);
+        ownerRef.current = true;
+        return;
+      }
+      if (owner.id === idRef.current) {
+        writeOwner(idRef.current);
+        ownerRef.current = true;
+      } else {
+        ownerRef.current = false;
+      }
+    };
+    tickOwner();
+    const ownerInterval = setInterval(tickOwner, 2000);
+    return () => clearInterval(ownerInterval);
+  }, []);
+
+  const handleCommand = useCallback((cmd?: string, value?: unknown) => {
+    if (!cmd) return;
+    if (cmd === "setMode" && typeof value === "string") {
+      applyState((prev) => {
+        const mode = value as Mode;
+        const duration = durationFor(mode, prev.settings);
+        return { ...prev, mode, timeLeft: duration, running: false };
+      });
+    }
+    if (cmd === "toggle") {
+      applyState((prev) => ({ ...prev, running: !prev.running }));
+    }
+    if (cmd === "start") {
+      applyState((prev) => {
+        const duration = durationFor(prev.mode, prev.settings);
+        const timeLeft = prev.timeLeft === 0 ? duration : prev.timeLeft;
+        return { ...prev, running: true, timeLeft };
+      });
+    }
+    if (cmd === "pause") {
+      applyState((prev) => ({ ...prev, running: false }));
+    }
+    if (cmd === "reset") {
+      applyState((prev) => ({ ...prev, running: false, timeLeft: durationFor(prev.mode, prev.settings) }));
+    }
+    if (cmd === "skip") {
+      applyState((prev) => ({ ...prev, running: false, timeLeft: 0, sessions: prev.mode === "focus" ? prev.sessions + 1 : prev.sessions }));
+    }
+    if (cmd === "settings" && typeof value === "object" && value) {
+      applyState((prev) => {
+        const settings = { ...prev.settings, ...(value as Partial<PomodoroSettings>) };
+        const duration = durationFor(prev.mode, settings);
+        const timeLeft = Math.min(prev.timeLeft, duration) || duration;
+        return { ...prev, settings, timeLeft };
+      });
+    }
+  }, [applyState]);
+
+  useEffect(() => {
+    if (!ownerRef.current) return;
+    if (!state.running) {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+      intervalRef.current = null;
+      return;
+    }
+    if (intervalRef.current) clearInterval(intervalRef.current);
+    intervalRef.current = setInterval(() => {
+      setState((prev) => {
+        if (!ownerRef.current) return prev;
+        const nextTime = prev.timeLeft - 1;
+        if (nextTime <= 0) {
+          const completedMode = prev.mode;
+          const durationMin = Math.round(durationFor(prev.mode, prev.settings) / 60);
+          const next: PomodoroState = {
+            ...prev,
+            timeLeft: 0,
+            running: false,
+            sessions: completedMode === "focus" ? prev.sessions + 1 : prev.sessions,
+            updatedAt: Date.now(),
+          };
+          emitState(next);
+          if (completedMode === "focus") {
+            setLastComplete({ mode: completedMode, minutes: durationMin });
+          }
+          return next;
+        }
+        const next: PomodoroState = { ...prev, timeLeft: nextTime, updatedAt: Date.now() };
+        emitState(next);
+        return next;
+      });
+    }, 1000);
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    };
+  }, [state.running, emitState]);
+
+  const setMode = useCallback((mode: Mode) => {
+    if (ownerRef.current) {
+      handleCommand("setMode", mode);
+    } else {
+      channelRef.current?.postMessage({ type: "cmd", cmd: "setMode", value: mode });
+    }
+  }, [handleCommand]);
+
+  const toggle = useCallback(() => {
+    if (ownerRef.current) {
+      handleCommand("toggle");
+    } else {
+      channelRef.current?.postMessage({ type: "cmd", cmd: "toggle" });
+    }
+  }, [handleCommand]);
+
+  const start = useCallback(() => {
+    if (ownerRef.current) {
+      handleCommand("start");
+    } else {
+      channelRef.current?.postMessage({ type: "cmd", cmd: "start" });
+    }
+  }, [handleCommand]);
+
+  const pause = useCallback(() => {
+    if (ownerRef.current) {
+      handleCommand("pause");
+    } else {
+      channelRef.current?.postMessage({ type: "cmd", cmd: "pause" });
+    }
+  }, [handleCommand]);
+
+  const reset = useCallback(() => {
+    if (ownerRef.current) {
+      handleCommand("reset");
+    } else {
+      channelRef.current?.postMessage({ type: "cmd", cmd: "reset" });
+    }
+  }, [handleCommand]);
+
+  const skip = useCallback(() => {
+    if (ownerRef.current) {
+      handleCommand("skip");
+    } else {
+      channelRef.current?.postMessage({ type: "cmd", cmd: "skip" });
+    }
+  }, [handleCommand]);
+
+  const updateSettings = useCallback((settings: Partial<PomodoroSettings>) => {
+    if (ownerRef.current) {
+      handleCommand("settings", settings);
+    } else {
+      channelRef.current?.postMessage({ type: "cmd", cmd: "settings", value: settings });
+    }
+  }, [handleCommand]);
+
+  return {
+    state,
+    setMode,
+    toggle,
+    start,
+    pause,
+    reset,
+    skip,
+    updateSettings,
+    lastComplete,
+    clearLastComplete: () => setLastComplete(null),
+  };
+}

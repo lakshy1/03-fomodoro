@@ -1,15 +1,16 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import LoadingButton from "./LoadingButton";
+import { usePomodoroStore, type PomodoroSettings } from "./usePomodoroStore";
 
-const MODES = {
-  focus: { label: "Focus", duration: 25 * 60, color: "#6366f1", bg: "var(--accent-dim)", border: "var(--accent-border)" },
-  short: { label: "Short Break", duration: 5 * 60, color: "#10b981", bg: "var(--green-dim)", border: "var(--green-border)" },
-  long: { label: "Long Break", duration: 15 * 60, color: "#06b6d4", bg: "var(--cyan-dim)", border: "var(--cyan-border)" },
+const MODE_META = {
+  focus: { label: "Focus", color: "#6366f1", bg: "var(--accent-dim)", border: "var(--accent-border)" },
+  short: { label: "Short Break", color: "#10b981", bg: "var(--green-dim)", border: "var(--green-border)" },
+  long: { label: "Long Break", color: "#06b6d4", bg: "var(--cyan-dim)", border: "var(--cyan-border)" },
 } as const;
 
-type Mode = keyof typeof MODES;
+type Mode = keyof typeof MODE_META;
 
 const RADIUS = 110;
 const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
@@ -18,82 +19,108 @@ function pad(n: number) {
   return n.toString().padStart(2, "0");
 }
 
-export default function PomodoroTimer() {
-  const [mode, setMode] = useState<Mode>("focus");
-  const [timeLeft, setTimeLeft] = useState(MODES.focus.duration);
-  const [running, setRunning] = useState(false);
-  const [sessions, setSessions] = useState(0);
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  const current = MODES[mode];
-  const progress = 1 - timeLeft / current.duration;
-  const dashOffset = CIRCUMFERENCE * (1 - progress);
-
-  const reset = useCallback(() => {
-    if (intervalRef.current) clearInterval(intervalRef.current);
-    setRunning(false);
-    setTimeLeft(MODES[mode].duration);
-  }, [mode]);
+export default function PomodoroTimer({
+  settings,
+  variant = "default",
+  disablePopup = false,
+}: {
+  settings?: Partial<PomodoroSettings>;
+  variant?: "default" | "popup";
+  disablePopup?: boolean;
+}) {
+  const { state, setMode, toggle, start, reset, skip, updateSettings, lastComplete, clearLastComplete } = usePomodoroStore(settings);
+  const { mode, timeLeft, running, sessions } = state;
+  const [showComplete, setShowComplete] = useState(false);
+  const popupRef = useRef<Window | null>(null);
 
   useEffect(() => {
-    reset();
-  }, [mode, reset]);
+    if (settings) updateSettings(settings);
+  }, [settings, updateSettings]);
 
   useEffect(() => {
-    if (!running) {
-      if (intervalRef.current) clearInterval(intervalRef.current);
-      return;
-    }
-    intervalRef.current = setInterval(() => {
-      setTimeLeft((t) => {
-        if (t <= 1) {
-          clearInterval(intervalRef.current!);
-          setRunning(false);
-          if (mode === "focus") setSessions((s) => s + 1);
-          // Attempt a subtle notification
-          if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted") {
-            new Notification("FomoDoro", { body: mode === "focus" ? "Focus session complete! Take a break." : "Break over. Back to work!" });
-          }
-          return 0;
+    if (lastComplete) {
+      setShowComplete(true);
+      if (typeof window !== "undefined" && "Notification" in window) {
+        if (Notification.permission === "granted") {
+          new Notification("FomoDoro", {
+            body: `Your focus timer for ${lastComplete.minutes} min got completed.`,
+          });
+        } else if (Notification.permission !== "denied") {
+          Notification.requestPermission().then((perm) => {
+            if (perm === "granted") {
+              new Notification("FomoDoro", {
+                body: `Your focus timer for ${lastComplete.minutes} min got completed.`,
+              });
+            }
+          });
         }
-        return t - 1;
-      });
-    }, 1000);
-    return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
+      }
+    }
+  }, [lastComplete]);
+
+  useEffect(() => {
+    if (disablePopup) return;
+    const onVisibility = () => {
+      if (window.innerWidth <= 900) return;
+      if (document.visibilityState === "hidden") {
+        if (!popupRef.current || popupRef.current.closed) {
+          popupRef.current = window.open(
+            "/timer",
+            "fomodoro-timer",
+            "width=320,height=420,resizable=yes,scrollbars=no"
+          );
+        }
+      } else if (document.visibilityState === "visible") {
+        if (popupRef.current && !popupRef.current.closed) {
+          popupRef.current.close();
+          popupRef.current = null;
+        }
+      }
     };
-  }, [running, mode]);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => document.removeEventListener("visibilitychange", onVisibility);
+  }, [disablePopup]);
+
+  const current = MODE_META[mode];
+  const duration = useMemo(() => {
+    if (mode === "short") return state.settings.shortBreakMinutes * 60;
+    if (mode === "long") return state.settings.longBreakMinutes * 60;
+    return state.settings.focusMinutes * 60;
+  }, [mode, state.settings]);
+  const progress = duration > 0 ? 1 - timeLeft / duration : 0;
+  const dashOffset = CIRCUMFERENCE * (1 - progress);
 
   const minutes = pad(Math.floor(timeLeft / 60));
   const seconds = pad(timeLeft % 60);
 
-  const totalMinutes = Math.floor(sessions * 25);
+  const totalMinutes = Math.floor(sessions * state.settings.focusMinutes);
 
   return (
-    <div className="fade-in flex flex-col items-center gap-8 w-full max-w-lg mx-auto py-6">
-      {/* Mode selector */}
-      <div
-        className="flex gap-1 p-1 rounded-xl"
-        style={{ background: "var(--glass-1)", border: "1px solid var(--glass-border)" }}
-      >
-        {(Object.keys(MODES) as Mode[]).map((m) => (
-          <LoadingButton
-            key={m}
-            onClick={() => setMode(m)}
-            className="px-4 py-1.5 rounded-lg text-sm font-medium transition-all duration-200"
-            style={
-              mode === m
-                ? { background: current.bg, color: current.color, border: `1px solid ${current.border}` }
-                : { color: "var(--text-2)", border: "1px solid transparent" }
-            }
-          >
-            {MODES[m].label}
-          </LoadingButton>
-        ))}
-      </div>
+    <div className="pomodoro-wrap fade-in flex flex-col items-center gap-8 w-full max-w-lg mx-auto py-6">
+      {variant === "default" && (
+        <div
+          className="flex gap-1 p-1 rounded-xl"
+          style={{ background: "var(--glass-1)", border: "1px solid var(--glass-border)" }}
+        >
+          {(Object.keys(MODE_META) as Mode[]).map((m) => (
+            <LoadingButton
+              key={m}
+              onClick={() => setMode(m)}
+              className="px-4 py-1.5 rounded-lg text-sm font-medium transition-all duration-200"
+              style={
+                mode === m
+                  ? { background: MODE_META[m].bg, color: MODE_META[m].color, border: `1px solid ${MODE_META[m].border}` }
+                  : { color: "var(--text-2)", border: "1px solid transparent" }
+              }
+            >
+              {MODE_META[m].label}
+            </LoadingButton>
+          ))}
+        </div>
+      )}
 
       {/* Ring timer */}
-      <div className="relative flex items-center justify-center" style={{ width: 280, height: 280 }}>
+      <div className="pomodoro-ring relative flex items-center justify-center" style={{ width: 280, height: 280 }}>
         {/* Outer glow ring */}
         <svg
           width="280"
@@ -128,7 +155,7 @@ export default function PomodoroTimer() {
 
         {/* Glass disc */}
         <div
-          className="relative z-10 flex flex-col items-center justify-center rounded-full"
+          className="pomodoro-disc relative z-10 flex flex-col items-center justify-center rounded-full"
           style={{
             width: 220,
             height: 220,
@@ -138,7 +165,7 @@ export default function PomodoroTimer() {
           }}
         >
           <span
-            className="font-mono font-semibold leading-none"
+            className="pomodoro-time font-mono font-semibold leading-none"
             style={{ fontSize: 52, color: "var(--text-1)", letterSpacing: "-2px" }}
           >
             {minutes}:{seconds}
@@ -146,7 +173,7 @@ export default function PomodoroTimer() {
           <span className="text-xs mt-2 font-medium tracking-widest uppercase" style={{ color: current.color }}>
             {current.label}
           </span>
-          {running && (
+          {running && variant === "default" && (
             <span
               className="absolute bottom-10 text-xs font-medium"
               style={{ color: "var(--text-3)" }}
@@ -158,7 +185,7 @@ export default function PomodoroTimer() {
       </div>
 
       {/* Controls */}
-      <div className="flex items-center gap-4">
+      <div className="pomodoro-controls flex items-center gap-4">
         {/* Reset */}
         <LoadingButton
           onClick={reset}
@@ -180,7 +207,7 @@ export default function PomodoroTimer() {
 
         {/* Play / Pause */}
         <LoadingButton
-          onClick={() => setRunning((r) => !r)}
+          onClick={toggle}
           className="flex items-center justify-center rounded-full font-semibold transition-all duration-200"
           style={{
             width: 64,
@@ -205,12 +232,7 @@ export default function PomodoroTimer() {
 
         {/* Skip */}
         <LoadingButton
-          onClick={() => {
-            if (intervalRef.current) clearInterval(intervalRef.current);
-            setRunning(false);
-            if (mode === "focus") setSessions((s) => s + 1);
-            setTimeLeft(0);
-          }}
+          onClick={skip}
           className="flex items-center justify-center rounded-full transition-all duration-200"
           style={{
             width: 44,
@@ -229,28 +251,30 @@ export default function PomodoroTimer() {
       </div>
 
       {/* Stats row */}
-      <div
-        className="flex items-center gap-6 px-8 py-4 rounded-2xl w-full"
-        style={{ background: "var(--glass-1)", border: "1px solid var(--glass-border)" }}
-      >
-        <Stat label="Sessions" value={sessions.toString()} color="var(--accent)" />
-        <div style={{ width: 1, height: 32, background: "var(--glass-border)" }} />
-        <Stat
-          label="Focus time"
-          value={
-            <span style={{ display: "inline-flex", alignItems: "baseline", gap: 6 }}>
-              <span>{totalMinutes}</span>
-              <span>m</span>
-            </span>
-          }
-          color="#10b981"
-        />
-        <div style={{ width: 1, height: 32, background: "var(--glass-border)" }} />
-        <Stat label="Daily goal" value={`${Math.min(sessions, 8)}/8`} color="#06b6d4" />
-      </div>
+      {variant === "default" && (
+        <div
+          className="pomodoro-stats flex items-center gap-6 px-8 py-4 rounded-2xl w-full"
+          style={{ background: "var(--glass-1)", border: "1px solid var(--glass-border)" }}
+        >
+          <Stat label="Sessions" value={sessions.toString()} color="var(--accent)" />
+          <div style={{ width: 1, height: 32, background: "var(--glass-border)" }} />
+          <Stat
+            label="Focus time"
+            value={
+              <span style={{ display: "inline-flex", alignItems: "baseline", gap: 6 }}>
+                <span>{totalMinutes}</span>
+                <span>m</span>
+              </span>
+            }
+            color="#10b981"
+          />
+          <div style={{ width: 1, height: 32, background: "var(--glass-border)" }} />
+          <Stat label="Daily goal" value={`${Math.min(sessions, state.settings.dailyGoal)}/${state.settings.dailyGoal}`} color="#06b6d4" />
+        </div>
+      )}
 
       {/* Session dots */}
-      {sessions > 0 && (
+      {variant === "default" && sessions > 0 && (
         <div className="flex flex-wrap gap-2 justify-center">
           {Array.from({ length: Math.min(sessions, 16) }).map((_, i) => (
             <div
@@ -282,6 +306,76 @@ function Stat({ label, value, color }: { label: string; value: React.ReactNode; 
       <span className="text-xs" style={{ color: "var(--text-3)", whiteSpace: "nowrap" }}>
         {label}
       </span>
+      {showComplete && lastComplete && variant === "default" && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(6,8,16,0.65)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 120,
+            padding: 20,
+          }}
+        >
+          <div
+            style={{
+              width: "min(420px, 90vw)",
+              background: "var(--glass-1)",
+              border: "1px solid var(--glass-border)",
+              borderRadius: 18,
+              padding: 20,
+              textAlign: "center",
+            }}
+          >
+            <div style={{ fontSize: 16, fontWeight: 700, color: "var(--text-1)" }}>
+              Focus timer completed
+            </div>
+            <div style={{ fontSize: 12, color: "var(--text-3)", marginTop: 6 }}>
+              Your focus timer for {lastComplete.minutes} min got completed.
+            </div>
+            <div style={{ display: "flex", gap: 10, marginTop: 16, justifyContent: "center" }}>
+              <LoadingButton
+                onClick={() => {
+                  setMode("focus");
+                  start();
+                  setShowComplete(false);
+                  clearLastComplete();
+                }}
+                style={{
+                  border: "none",
+                  borderRadius: 10,
+                  padding: "8px 12px",
+                  background: "linear-gradient(135deg, #6366f1, #8b5cf6)",
+                  color: "white",
+                  fontWeight: 600,
+                }}
+              >
+                Restart Focus
+              </LoadingButton>
+              <LoadingButton
+                onClick={() => {
+                  setMode("short");
+                  start();
+                  setShowComplete(false);
+                  clearLastComplete();
+                }}
+                style={{
+                  border: "1px solid var(--glass-border)",
+                  borderRadius: 10,
+                  padding: "8px 12px",
+                  background: "var(--glass-2)",
+                  color: "var(--text-1)",
+                  fontWeight: 600,
+                }}
+              >
+                Start Break
+              </LoadingButton>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

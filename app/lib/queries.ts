@@ -4,6 +4,10 @@ type ProfileRecord = {
   name: string;
   publicId: string;
   avatarUrl: string | null;
+  dailyGoal: number;
+  focusMinutes: number;
+  shortBreakMinutes: number;
+  longBreakMinutes: number;
 };
 
 type DayDatum = { date: string; minutes: number };
@@ -31,7 +35,7 @@ export async function fetchProfile(): Promise<{ userId: string; profile: Profile
   if (!user) return null;
   const { data, error } = await supabase
     .from("profiles")
-    .select("name, public_id, avatar_url")
+    .select("name, public_id, avatar_url, daily_goal, focus_minutes, short_break_minutes, long_break_minutes")
     .eq("id", user.id)
     .single();
   if (error || !data) {
@@ -43,10 +47,22 @@ export async function fetchProfile(): Promise<{ userId: string; profile: Profile
       name: fallbackName,
       public_id: null,
       avatar_url: null,
+      daily_goal: 8,
+      focus_minutes: 25,
+      short_break_minutes: 5,
+      long_break_minutes: 15,
     });
     return {
       userId: user.id,
-      profile: { name: fallbackName, publicId: "------", avatarUrl: null },
+      profile: {
+        name: fallbackName,
+        publicId: "------",
+        avatarUrl: null,
+        dailyGoal: 8,
+        focusMinutes: 25,
+        shortBreakMinutes: 5,
+        longBreakMinutes: 15,
+      },
     };
   }
   return {
@@ -55,6 +71,10 @@ export async function fetchProfile(): Promise<{ userId: string; profile: Profile
       name: data.name || "User",
       publicId: (data.public_id || "------").toString(),
       avatarUrl: data.avatar_url || null,
+      dailyGoal: data.daily_goal ?? 8,
+      focusMinutes: data.focus_minutes ?? 25,
+      shortBreakMinutes: data.short_break_minutes ?? 5,
+      longBreakMinutes: data.long_break_minutes ?? 15,
     },
   };
 }
@@ -81,7 +101,15 @@ export async function ensureProfilePublicId(userId: string): Promise<string | nu
 // Update profile data and optionally upload a new avatar.
 export async function updateProfile(
   userId: string,
-  patch: { name?: string; avatar_url?: string | null; avatar_file?: File }
+  patch: {
+    name?: string;
+    avatar_url?: string | null;
+    avatar_file?: File;
+    daily_goal?: number;
+    focus_minutes?: number;
+    short_break_minutes?: number;
+    long_break_minutes?: number;
+  }
 ) {
   if (!userId) return;
   let avatarUrl = patch.avatar_url ?? undefined;
@@ -99,6 +127,10 @@ export async function updateProfile(
     .update({
       ...(patch.name ? { name: patch.name } : {}),
       ...(avatarUrl !== undefined ? { avatar_url: avatarUrl } : {}),
+      ...(patch.daily_goal !== undefined ? { daily_goal: patch.daily_goal } : {}),
+      ...(patch.focus_minutes !== undefined ? { focus_minutes: patch.focus_minutes } : {}),
+      ...(patch.short_break_minutes !== undefined ? { short_break_minutes: patch.short_break_minutes } : {}),
+      ...(patch.long_break_minutes !== undefined ? { long_break_minutes: patch.long_break_minutes } : {}),
     })
     .eq("id", userId);
 }

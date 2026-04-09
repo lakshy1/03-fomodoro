@@ -33,6 +33,10 @@ type ProfileRecord = {
   name: string;
   publicId: string;
   avatarUrl: string | null;
+  dailyGoal: number;
+  focusMinutes: number;
+  shortBreakMinutes: number;
+  longBreakMinutes: number;
 };
 
 type DayDatum = { date: string; minutes: number };
@@ -523,6 +527,83 @@ function MyProfilePanel({
             <div style={{ fontSize: 16, fontWeight: 700, color: "var(--text-1)", marginTop: 6 }}>
               {card.value}
             </div>
+          </div>
+        ))}
+      </div>
+      <div
+        style={{
+          background: "var(--glass-1)",
+          border: "1px solid var(--glass-border)",
+          borderRadius: 18,
+          padding: 16,
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
+          gap: 12,
+        }}
+      >
+        {[
+          {
+            label: "Daily goal",
+            value: profile.dailyGoal,
+            min: 1,
+            max: 99,
+            key: "dailyGoal",
+          },
+          {
+            label: "Focus minutes",
+            value: profile.focusMinutes,
+            min: 5,
+            max: 180,
+            key: "focusMinutes",
+          },
+          {
+            label: "Short break",
+            value: profile.shortBreakMinutes,
+            min: 1,
+            max: 60,
+            key: "shortBreakMinutes",
+          },
+          {
+            label: "Long break",
+            value: profile.longBreakMinutes,
+            min: 5,
+            max: 120,
+            key: "longBreakMinutes",
+          },
+        ].map((item) => (
+          <div
+            key={item.key}
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: 6,
+              background: "var(--glass-2)",
+              border: "1px solid var(--glass-border)",
+              borderRadius: 12,
+              padding: 12,
+            }}
+          >
+            <span style={{ fontSize: 11, color: "var(--text-3)" }}>{item.label}</span>
+            <input
+              type="number"
+              min={item.min}
+              max={item.max}
+              value={item.value}
+              onChange={(e) => {
+                const next = Math.max(item.min, Math.min(item.max, Number(e.target.value || 0)));
+                onProfileChange({ ...profile, [item.key]: next } as ProfileRecord);
+              }}
+              style={{
+                background: "var(--glass-1)",
+                border: "1px solid var(--glass-border)",
+                borderRadius: 8,
+                padding: "6px 8px",
+                color: "var(--text-1)",
+                fontSize: 14,
+                outline: "none",
+                width: "100%",
+              }}
+            />
           </div>
         ))}
       </div>
@@ -1107,6 +1188,10 @@ export default function StudylinApp() {
     name: "",
     publicId: "",
     avatarUrl: null,
+    dailyGoal: 8,
+    focusMinutes: 25,
+    shortBreakMinutes: 5,
+    longBreakMinutes: 15,
   });
   const [profileDirty, setProfileDirty] = useState(false);
   const [last7Days, setLast7Days] = useState<DayDatum[]>(
@@ -1226,11 +1311,15 @@ export default function StudylinApp() {
       return;
     }
     setUserId(data.userId);
-    setProfile({
-      name: data.profile.name,
-      publicId: data.profile.publicId,
-      avatarUrl: data.profile.avatarUrl,
-    });
+      setProfile({
+        name: data.profile.name,
+        publicId: data.profile.publicId,
+        avatarUrl: data.profile.avatarUrl,
+        dailyGoal: data.profile.dailyGoal,
+        focusMinutes: data.profile.focusMinutes,
+        shortBreakMinutes: data.profile.shortBreakMinutes,
+        longBreakMinutes: data.profile.longBreakMinutes,
+      });
     setProfileLoading(false);
     setAuthReady(true);
     const ensured = await ensureProfilePublicId(data.userId);
@@ -1249,6 +1338,10 @@ export default function StudylinApp() {
       await updateProfile(userId, {
         name: profile.name,
         avatar_url: profile.avatarUrl,
+        daily_goal: profile.dailyGoal,
+        focus_minutes: profile.focusMinutes,
+        short_break_minutes: profile.shortBreakMinutes,
+        long_break_minutes: profile.longBreakMinutes,
       });
       setProfileDirty(false);
       setProfileSaveTick((n) => n + 1);
@@ -1427,6 +1520,16 @@ export default function StudylinApp() {
   const showSidebar = !isMobile || mobileOpen;
   const viewComponents: Record<View, React.ReactNode> = {
     ...COMPONENTS,
+    pomodoro: (
+      <PomodoroTimer
+        settings={{
+          focusMinutes: profile.focusMinutes,
+          shortBreakMinutes: profile.shortBreakMinutes,
+          longBreakMinutes: profile.longBreakMinutes,
+          dailyGoal: profile.dailyGoal,
+        }}
+      />
+    ),
     profile: (
       <MyProfilePanel
         profile={profile}
