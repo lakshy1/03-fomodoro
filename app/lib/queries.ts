@@ -264,6 +264,7 @@ export async function acceptFriendRequest(userId: string, requestId: string) {
     );
   if (insertSelfError && insertOtherError) {
     const parts = [insertSelfError, insertOtherError].map((err) => {
+      if (!err) return "Insert failed";
       const code = (err as { code?: string }).code;
       return `${err.message || "Insert failed"}${code ? ` (code: ${code})` : ""}`;
     });
