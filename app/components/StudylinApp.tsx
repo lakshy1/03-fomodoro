@@ -11,6 +11,7 @@ import {
   fetchFriendRequests,
   fetchLeaderboardRange,
   fetchProfile,
+  saveFocusMinutes,
   signOutUser,
   updateProfile,
   ensureProfilePublicId,
@@ -1496,6 +1497,14 @@ export default function StudylinApp() {
     localStorage.setItem("fomodoro_theme", t);
   }
 
+  const handleSyncMinutes = useCallback(async (minutes: number) => {
+    if (!userId || minutes <= 0) return;
+    const today = new Date().toISOString().slice(0, 10);
+    await saveFocusMinutes(userId, today, minutes);
+    refreshCalendar();
+    refreshLeaderboard();
+  }, [userId, refreshCalendar, refreshLeaderboard]);
+
   const SIDEBAR_W = collapsed ? SIDEBAR_COLLAPSED_W : SIDEBAR_EXPANDED_W;
   const displayName = (profile.name || "User").trim() || "User";
   const displayInitial = (displayName[0] || "U").toUpperCase();
@@ -1528,6 +1537,7 @@ export default function StudylinApp() {
           longBreakMinutes: profile.longBreakMinutes,
           dailyGoal: profile.dailyGoal,
         }}
+        onSyncMinutes={handleSyncMinutes}
       />
     ),
     profile: (
@@ -2130,13 +2140,17 @@ export default function StudylinApp() {
                   flexDirection: "column",
                   height: "100%",
                   overflow: t === "notes" || t === "kanban" ? "hidden" : "auto",
-                  padding: isMobile ? "12px" : "14px 18px",   /* ← reduced inner padding */
+                  padding: isMobile ? "12px" : "14px 18px",
                   scrollSnapType: isMobile && (t === "leaderboard" || t === "calendar") ? "y mandatory" : "unset",
+                  /* Center the pomodoro timer vertically on desktop */
+                  justifyContent: !isMobile && t === "pomodoro" ? "center" : "flex-start",
+                  alignItems: !isMobile && t === "pomodoro" ? "center" : "stretch",
                 }}
               >
                 <div
                   data-snap-scope={isMobile && (t === "leaderboard" || t === "calendar") ? "true" : undefined}
                   style={{
+                    width: !isMobile && t === "pomodoro" ? "100%" : undefined,
                     height:
                       t === "notes" ||
                       (t === "tasks" && !isMobile) ||

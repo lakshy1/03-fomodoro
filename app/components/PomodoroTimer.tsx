@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import LoadingButton from "./LoadingButton";
 import { usePomodoroStore, type PomodoroSettings } from "./usePomodoroStore";
 
@@ -23,15 +23,92 @@ export default function PomodoroTimer({
   settings,
   variant = "default",
   disablePopup = false,
+  onSyncMinutes,
 }: {
   settings?: Partial<PomodoroSettings>;
   variant?: "default" | "popup";
   disablePopup?: boolean;
+  /** Called with the number of focus minutes to persist (every ~60 s and on session complete) */
+  onSyncMinutes?: (minutes: number) => void;
 }) {
-  const { state, setMode, toggle, start, reset, skip, updateSettings, lastComplete, clearLastComplete } = usePomodoroStore(settings);
+  const { state, setMode, toggle, start, reset, updateSettings, lastComplete, clearLastComplete } = usePomodoroStore(settings);
   const { mode, timeLeft, running, sessions } = state;
   const [showComplete, setShowComplete] = useState(false);
   const popupRef = useRef<Window | null>(null);
+
+  // Per-minute DB sync tracking
+  const pendingSecondsRef = useRef(0);
+  const syncedMinutesRef = useRef(0);
+  const prevTimeLeftRef = useRef<number | null>(null);
+  const prevRunningRef = useRef(false);
+  const prevModeRef = useRef<Mode>(mode);
+
+  const flushMinutes = useCallback((minutes: number) => {
+    if (minutes > 0) onSyncMinutes?.(minutes);
+  }, [onSyncMinutes]);
+
+  // Track elapsed focus seconds and flush every 60s
+  useEffect(() => {
+    const nowMode = state.mode;
+    const nowRunning = state.running;
+    const nowTimeLeft = state.timeLeft;
+
+    // Mode changed → reset tracking
+    if (nowMode !== prevModeRef.current) {
+      syncedMinutesRef.current = 0;
+      pendingSecondsRef.current = 0;
+      prevTimeLeftRef.current = null;
+      prevModeRef.current = nowMode;
+      prevRunningRef.current = nowRunning;
+      return;
+    }
+    prevModeRef.current = nowMode;
+
+    if (nowMode !== "focus") {
+      prevRunningRef.current = nowRunning;
+      return;
+    }
+
+    // Started running → anchor prev
+    if (!prevRunningRef.current && nowRunning) {
+      prevTimeLeftRef.current = nowTimeLeft;
+      prevRunningRef.current = true;
+      return;
+    }
+
+    // Stopped running (paused/reset) → keep pending, just stop accumulating
+    if (prevRunningRef.current && !nowRunning) {
+      prevTimeLeftRef.current = null;
+      prevRunningRef.current = false;
+      return;
+    }
+
+    // Counting down
+    if (nowRunning && prevTimeLeftRef.current !== null) {
+      const delta = prevTimeLeftRef.current - nowTimeLeft;
+      prevTimeLeftRef.current = nowTimeLeft;
+      if (delta > 0 && delta <= 5) {
+        pendingSecondsRef.current += delta;
+        const minutesToSync = Math.floor(pendingSecondsRef.current / 60);
+        if (minutesToSync > 0) {
+          pendingSecondsRef.current -= minutesToSync * 60;
+          syncedMinutesRef.current += minutesToSync;
+          flushMinutes(minutesToSync);
+        }
+      }
+    }
+    prevRunningRef.current = nowRunning;
+  }, [state.timeLeft, state.running, state.mode, flushMinutes]);
+
+  // On session complete: flush any remaining unsynced minutes
+  useEffect(() => {
+    if (!lastComplete) return;
+    const remaining = lastComplete.minutes - syncedMinutesRef.current;
+    syncedMinutesRef.current = 0;
+    pendingSecondsRef.current = 0;
+    prevTimeLeftRef.current = null;
+    flushMinutes(remaining);
+  }, [lastComplete, flushMinutes]);
 
   useEffect(() => {
     if (settings) updateSettings(settings);
@@ -67,7 +144,7 @@ export default function PomodoroTimer({
           popupRef.current = window.open(
             "/timer",
             "fomodoro-timer",
-            "width=320,height=420,resizable=yes,scrollbars=no"
+            "width=460,height=210,resizable=yes,scrollbars=no,location=no,toolbar=no,menubar=no,status=no"
           );
         }
       } else if (document.visibilityState === "visible") {
@@ -230,24 +307,6 @@ export default function PomodoroTimer({
           )}
         </LoadingButton>
 
-        {/* Skip */}
-        <LoadingButton
-          onClick={skip}
-          className="flex items-center justify-center rounded-full transition-all duration-200"
-          style={{
-            width: 44,
-            height: 44,
-            background: "var(--glass-2)",
-            border: "1px solid var(--glass-border)",
-            color: "var(--text-2)",
-          }}
-          title="Skip"
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <polygon points="5,4 15,12 5,20" />
-            <line x1="19" y1="5" x2="19" y2="19" />
-          </svg>
-        </LoadingButton>
       </div>
 
       {/* Stats row */}
