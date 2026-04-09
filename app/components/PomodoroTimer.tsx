@@ -77,9 +77,8 @@ export function PipBody({
     <div
       style={{
         width: "100vw", height: "100vh",
-        position: "relative",
         display: "flex", alignItems: "center",
-        gap: 14, padding: "0 12px 0 14px",
+        gap: 10, padding: "0 10px 0 12px",
         background:
           "radial-gradient(ellipse 160% 120% at 5% 50%, rgba(99,102,241,0.15), transparent 50%)," +
           "#06080f",
@@ -89,13 +88,8 @@ export function PipBody({
         WebkitFontSmoothing: "antialiased",
       } as React.CSSProperties}
     >
-      {/* Mac dots — absolute top-right */}
-      <div style={{ position: "absolute", top: 8, right: 10, zIndex: 10 }}>
-        <MacDots onClose={onClose} onMin={onMin} onMax={onMax} />
-      </div>
-
-      {/* ── Ring — big ── */}
-      <div style={{ flexShrink: 0, width: 96, height: 96 }}>
+      {/* ── Ring ── fills height */}
+      <div style={{ flexShrink: 0, width: "min(100vh, 96px)", height: "min(100vh, 96px)" }}>
         <svg
           width="100%" height="100%"
           viewBox="0 0 100 100"
@@ -105,11 +99,8 @@ export function PipBody({
             transition: "filter 0.5s ease",
           }}
         >
-          {/* Glass fill */}
           <circle cx="50" cy="50" r="47" fill="rgba(255,255,255,0.025)" stroke="rgba(255,255,255,0.04)" strokeWidth="0.5"/>
-          {/* Track */}
           <circle cx="50" cy="50" r={PIP_R} fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="5.5"/>
-          {/* Arc */}
           <circle
             cx="50" cy="50" r={PIP_R}
             fill="none" stroke={color} strokeWidth="5.5" strokeLinecap="round"
@@ -121,76 +112,78 @@ export function PipBody({
               transition: "stroke-dashoffset 0.85s ease, stroke 0.4s ease",
             }}
           />
-          {/* Time */}
-          <text
-            x="50" y="45" textAnchor="middle" dominantBaseline="middle"
+          <text x="50" y="45" textAnchor="middle" dominantBaseline="middle"
             fill="rgba(255,255,255,0.94)" fontSize="20" fontWeight="700"
-            fontFamily="ui-monospace,'SF Mono',Consolas,monospace" letterSpacing="-0.5"
-          >
+            fontFamily="ui-monospace,'SF Mono',Consolas,monospace" letterSpacing="-0.5">
             {mins}:{secs}
           </text>
-          {/* Mode label */}
-          <text
-            x="50" y="63" textAnchor="middle"
-            fill={color} fontSize="6" fontWeight="600" letterSpacing="1.4" opacity="0.85"
-          >
+          <text x="50" y="63" textAnchor="middle"
+            fill={color} fontSize="6" fontWeight="600" letterSpacing="1.4" opacity="0.85">
             {modeShort}
           </text>
         </svg>
       </div>
 
-      {/* ── Vertical icon buttons ── */}
-      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
-        {/* Play / Pause */}
-        <button
-          onClick={toggle}
-          style={{
-            width: 42, height: 42, borderRadius: "50%", padding: 0,
-            background: running ? "rgba(99,102,241,0.20)" : color,
-            border: `1.5px solid ${running ? "rgba(99,102,241,0.38)" : "transparent"}`,
-            display: "flex", alignItems: "center", justifyContent: "center",
-            cursor: "pointer", flexShrink: 0,
-            boxShadow: running ? "none" : `0 2px 14px ${color}55`,
-            transition: "all 0.18s ease",
-          }}
-        >
-          {running ? (
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="rgba(255,255,255,0.92)">
-              <rect x="6" y="4" width="4" height="16" rx="1"/>
-              <rect x="14" y="4" width="4" height="16" rx="1"/>
-            </svg>
-          ) : (
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="rgba(255,255,255,0.92)">
-              <polygon points="6,3 20,12 6,21"/>
-            </svg>
-          )}
-        </button>
+      {/* ── Right column: mac dots top-right, buttons centered ── */}
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", flex: 1, minWidth: 0, height: "100%", position: "relative" }}>
+        {/* Mac dots pinned top-right — inline width matches exactly 3 dots + gaps */}
+        <div style={{ position: "absolute", top: 7, right: 0 }}>
+          <MacDots onClose={onClose} onMin={onMin} onMax={onMax} />
+        </div>
 
-        {/* Reset */}
-        <button
-          onClick={reset}
-          style={{
-            width: 34, height: 34, borderRadius: "50%", padding: 0,
-            background: "rgba(255,255,255,0.05)",
-            border: "1.5px solid rgba(255,255,255,0.10)",
-            display: "flex", alignItems: "center", justifyContent: "center",
-            cursor: "pointer", flexShrink: 0,
-            transition: "all 0.18s ease",
-          }}
-          onMouseEnter={e => {
-            (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.10)";
-            (e.currentTarget as HTMLElement).style.borderColor = "rgba(255,255,255,0.20)";
-          }}
-          onMouseLeave={e => {
-            (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.05)";
-            (e.currentTarget as HTMLElement).style.borderColor = "rgba(255,255,255,0.10)";
-          }}
-        >
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.50)" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
-            <path d="M3 3v5h5"/>
-          </svg>
-        </button>
+        {/* Buttons vertically centered */}
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8, margin: "auto 0" }}>
+          {/* Play / Pause */}
+          <button
+            onClick={toggle}
+            style={{
+              width: 40, height: 40, borderRadius: "50%", padding: 0,
+              background: running ? "rgba(99,102,241,0.20)" : color,
+              border: `1.5px solid ${running ? "rgba(99,102,241,0.38)" : "transparent"}`,
+              display: "flex", alignItems: "center", justifyContent: "center",
+              cursor: "pointer", flexShrink: 0,
+              boxShadow: running ? "none" : `0 2px 14px ${color}55`,
+              transition: "all 0.18s ease",
+            }}
+          >
+            {running ? (
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="rgba(255,255,255,0.92)">
+                <rect x="6" y="4" width="4" height="16" rx="1"/>
+                <rect x="14" y="4" width="4" height="16" rx="1"/>
+              </svg>
+            ) : (
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="rgba(255,255,255,0.92)">
+                <polygon points="6,3 20,12 6,21"/>
+              </svg>
+            )}
+          </button>
+
+          {/* Reset */}
+          <button
+            onClick={reset}
+            style={{
+              width: 32, height: 32, borderRadius: "50%", padding: 0,
+              background: "rgba(255,255,255,0.05)",
+              border: "1.5px solid rgba(255,255,255,0.10)",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              cursor: "pointer", flexShrink: 0,
+              transition: "all 0.18s ease",
+            }}
+            onMouseEnter={e => {
+              (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.10)";
+              (e.currentTarget as HTMLElement).style.borderColor = "rgba(255,255,255,0.20)";
+            }}
+            onMouseLeave={e => {
+              (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.05)";
+              (e.currentTarget as HTMLElement).style.borderColor = "rgba(255,255,255,0.10)";
+            }}
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.50)" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+              <path d="M3 3v5h5"/>
+            </svg>
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -322,64 +315,49 @@ export default function PomodoroTimer({
     }
   }, [lastComplete]);
 
-  // ── Document Picture-in-Picture (or window.open fallback) ──
-  useEffect(() => {
-    if (disablePopup) return;
+  // ── Document PiP / popup — must be triggered by a user click ──
+  // NOTE: documentPictureInPicture.requestWindow() REQUIRES a user gesture.
+  // visibilitychange is NOT a user gesture, so it always fell back to window.open.
+  // We expose openPip() and call it from the pop-out button instead.
+  const pipRootRef = useRef<{ unmount: () => void } | null>(null);
+  const openPip = useCallback(async () => {
+    if (disablePopup || window.innerWidth <= 900) return;
+    // Document PiP — Chrome 116+ (truly chromeless)
+    if ("documentPictureInPicture" in window) {
+      try {
+        const pipWin: Window = await (
+          window as unknown as { documentPictureInPicture: { requestWindow: (o: object) => Promise<Window> } }
+        ).documentPictureInPicture.requestWindow({ width: 220, height: 112 });
 
-    const openPiP = async () => {
-      // Document PiP — Chrome 111+
-      if ("documentPictureInPicture" in window) {
-        try {
-          const pipWin: Window = await (
-            window as unknown as { documentPictureInPicture: { requestWindow: (o: object) => Promise<Window> } }
-          ).documentPictureInPicture.requestWindow({ width: 230, height: 116 });
+        const style = pipWin.document.createElement("style");
+        style.textContent =
+          "*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }" +
+          "html, body { width: 100%; height: 100%; overflow: hidden; background: #06080f; scrollbar-width: none; -ms-overflow-style: none; }" +
+          "html::-webkit-scrollbar, body::-webkit-scrollbar { display: none; }";
+        pipWin.document.head.appendChild(style);
 
-          // Inject reset CSS — kill all scrollbars and overflow
-          const style = pipWin.document.createElement("style");
-          style.textContent =
-            "*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }" +
-            "html, body { width: 100%; height: 100%; overflow: hidden; background: #06080f; scrollbar-width: none; -ms-overflow-style: none; }" +
-            "html::-webkit-scrollbar, body::-webkit-scrollbar { display: none; }";
-          pipWin.document.head.appendChild(style);
+        const { createRoot } = await import("react-dom/client");
+        const root = createRoot(pipWin.document.body);
+        pipRootRef.current = root;
+        root.render(<PipTimerContent />);
 
-          // Render PipTimerContent via a new React root
-          const { createRoot } = await import("react-dom/client");
-          const root = createRoot(pipWin.document.body);
-          root.render(<PipTimerContent />);
-
-          pipWin.addEventListener("pagehide", () => {
-            root.unmount();
-          });
-          return; // done — don't open window.open
-        } catch {
-          // fall through to window.open
-        }
+        pipWin.addEventListener("pagehide", () => {
+          root.unmount();
+          pipRootRef.current = null;
+        });
+        return;
+      } catch {
+        // fall through to window.open
       }
-      // Fallback
-      if (!popupRef.current || popupRef.current.closed) {
-        popupRef.current = window.open(
-          "/timer",
-          "fomodoro-timer",
-          "width=230,height=170,resizable=yes,scrollbars=no,location=no,toolbar=no,menubar=no,status=no"
-        );
-      }
-    };
-
-    const closePiP = () => {
-      if (popupRef.current && !popupRef.current.closed) {
-        popupRef.current.close();
-        popupRef.current = null;
-      }
-    };
-
-    const onVisibility = () => {
-      if (window.innerWidth <= 900) return;
-      if (document.visibilityState === "hidden") openPiP();
-      else closePiP();
-    };
-
-    document.addEventListener("visibilitychange", onVisibility);
-    return () => document.removeEventListener("visibilitychange", onVisibility);
+    }
+    // Fallback — window.open (shows browser chrome, but functional)
+    if (!popupRef.current || popupRef.current.closed) {
+      popupRef.current = window.open(
+        "/timer",
+        "fomodoro-timer",
+        "width=230,height=170,resizable=yes,scrollbars=no,location=no,toolbar=no,menubar=no,status=no"
+      );
+    }
   }, [disablePopup]);
 
   // ── Derived display values ──
@@ -513,8 +491,23 @@ export default function PomodoroTimer({
           )}
         </LoadingButton>
 
-        {/* Spacer to mirror the reset button, keeping play perfectly centered */}
-        <div style={{ width: 44, height: 44, flexShrink: 0 }} />
+        {/* Pop-out — triggers Document PiP (must be user click for chromeless window) */}
+        {!disablePopup && (
+          <LoadingButton
+            onClick={openPip}
+            className="flex items-center justify-center rounded-full transition-all duration-200"
+            style={{ width: 44, height: 44, background: "var(--glass-2)", border: "1px solid var(--glass-border)", color: "var(--text-2)" }}
+            title="Pop out timer"
+          >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="3" width="7" height="7" rx="1"/>
+              <rect x="14" y="3" width="7" height="7" rx="1"/>
+              <rect x="14" y="14" width="7" height="7" rx="1"/>
+              <rect x="3" y="14" width="7" height="7" rx="1"/>
+            </svg>
+          </LoadingButton>
+        )}
+        {disablePopup && <div style={{ width: 44, height: 44, flexShrink: 0 }} />}
       </div>
 
       {/* Stats row */}
