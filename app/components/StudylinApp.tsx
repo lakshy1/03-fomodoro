@@ -1049,6 +1049,7 @@ export default function StudylinApp() {
   const [expandTick,   setExpandTick]  = useState(0);
   const [signingOut, setSigningOut] = useState(false);
   const [userId,       setUserId]      = useState<string | null>(null);
+  const [authReady, setAuthReady] = useState(false);
   const [profileLoading, setProfileLoading] = useState(true);
   const [calendarLoading, setCalendarLoading] = useState(true);
   const [requestsLoading, setRequestsLoading] = useState(true);
@@ -1059,8 +1060,8 @@ export default function StudylinApp() {
   const profileMenuRef = useRef<HTMLDivElement | null>(null);
   const profileBtnRef = useRef<HTMLButtonElement | null>(null);
   const [profile, setProfile] = useState<ProfileRecord>({
-    name: "Lakshya",
-    publicId: "120045",
+    name: "",
+    publicId: "",
     avatarUrl: null,
   });
   const [profileDirty, setProfileDirty] = useState(false);
@@ -1183,6 +1184,7 @@ export default function StudylinApp() {
         avatarUrl: data.profile.avatarUrl,
       });
       setProfileLoading(false);
+      setAuthReady(true);
       const ensured = await ensureProfilePublicId(data.userId);
       if (ensured) {
         setProfile((p) => ({ ...p, publicId: ensured }));
@@ -1283,6 +1285,14 @@ export default function StudylinApp() {
     };
   }, [userId]);
 
+  async function refreshRequests() {
+    if (!userId) return;
+    setRequestsLoading(true);
+    const data = await fetchFriendRequests(userId);
+    setRequests(data);
+    setRequestsLoading(false);
+  }
+
   function applyTheme(t: Theme) {
     setTheme(t);
     document.documentElement.setAttribute("data-theme", t);
@@ -1290,6 +1300,26 @@ export default function StudylinApp() {
   }
 
   const SIDEBAR_W = collapsed ? SIDEBAR_COLLAPSED_W : SIDEBAR_EXPANDED_W;
+  const displayName = (profile.name || "User").trim() || "User";
+  const displayInitial = (displayName[0] || "U").toUpperCase();
+
+  if (!authReady) {
+    return (
+      <div
+        style={{
+          minHeight: "100vh",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          color: "var(--text-2)",
+          background:
+            "radial-gradient(1200px 600px at 20% 0%, var(--mesh-a), transparent), radial-gradient(800px 400px at 80% 20%, var(--mesh-b), transparent), var(--bg-base)",
+        }}
+      >
+        Loading your workspace...
+      </div>
+    );
+  }
   const showSidebar = !isMobile || mobileOpen;
   const viewComponents: Record<View, React.ReactNode> = {
     ...COMPONENTS,
@@ -1323,14 +1353,26 @@ export default function StudylinApp() {
         requests={requests}
         loading={requestsLoading}
         onAccept={async (id) => {
-          await acceptFriendRequest(userId || "", id);
-          setRequests((r) => r.filter((req) => req.id !== id));
-          push({ type: "success", title: "Friend added", message: "You are now connected." });
+          try {
+            await acceptFriendRequest(userId || "", id);
+            setRequests((r) => r.filter((req) => req.id !== id));
+            push({ type: "success", title: "Friend added", message: "You are now connected." });
+            await refreshRequests();
+          } catch (err) {
+            const message = err instanceof Error ? err.message : "Could not accept request.";
+            push({ type: "error", title: "Action failed", message });
+          }
         }}
         onDecline={async (id) => {
-          await declineFriendRequest(userId || "", id);
-          setRequests((r) => r.filter((req) => req.id !== id));
-          push({ type: "info", title: "Request declined" });
+          try {
+            await declineFriendRequest(userId || "", id);
+            setRequests((r) => r.filter((req) => req.id !== id));
+            push({ type: "info", title: "Request declined" });
+            await refreshRequests();
+          } catch (err) {
+            const message = err instanceof Error ? err.message : "Could not decline request.";
+            push({ type: "error", title: "Action failed", message });
+          }
         }}
       />
     ),
@@ -1346,8 +1388,14 @@ export default function StudylinApp() {
       <AddFriendPanel
         onSend={async (code) => {
           if (!code.trim()) return;
-          await createFriendRequestByCode(userId || "", code.trim());
-          push({ type: "success", title: "Request sent", message: "Friend request delivered." });
+          try {
+            await createFriendRequestByCode(userId || "", code.trim());
+            push({ type: "success", title: "Request sent", message: "Friend request delivered." });
+            await refreshRequests();
+          } catch (err) {
+            const message = err instanceof Error ? err.message : "Could not send request.";
+            push({ type: "error", title: "Request failed", message });
+          }
         }}
       />
     ),
@@ -1818,9 +1866,11 @@ export default function StudylinApp() {
                   color: "white", fontSize: 12, fontWeight: 700,
                 }}
               >
-                L
+                {displayInitial}
               </div>
-              <span style={{ fontSize: 13, fontWeight: 650 }}>Lakshya</span>
+              <span style={{ fontSize: 13, fontWeight: 650 }}>
+                {profileLoading ? "Loading..." : displayName}
+              </span>
               <span style={{
                 display: "flex",
                 alignItems: "center",

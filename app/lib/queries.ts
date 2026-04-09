@@ -191,32 +191,72 @@ export async function fetchFriendRequests(userId: string): Promise<FriendRequest
 // Create a friend request using a public code.
 export async function createFriendRequestByCode(userId: string, code: string) {
   const normalized = code.toUpperCase();
-  const { data } = await supabase.from("profiles").select("id").eq("public_id", normalized).single();
-  if (!data || data.id === userId) return;
-  await supabase.from("friend_requests").insert({
+  const { data, error } = await supabase.from("profiles").select("id").eq("public_id", normalized).single();
+  if (error || !data) {
+    throw new Error("No user found for that code.");
+  }
+  if (data.id === userId) {
+    throw new Error("You cannot add yourself.");
+  }
+  const { data: alreadyFriends } = await supabase
+    .from("friends")
+    .select("id")
+    .eq("user_id", userId)
+    .eq("friend_id", data.id)
+    .maybeSingle();
+  if (alreadyFriends) {
+    throw new Error("You are already friends.");
+  }
+  const { data: existing } = await supabase
+    .from("friend_requests")
+    .select("id")
+    .eq("requester_id", userId)
+    .eq("addressee_id", data.id)
+    .eq("status", "pending")
+    .maybeSingle();
+  if (existing) {
+    throw new Error("Request already sent.");
+  }
+  const { error: insertError } = await supabase.from("friend_requests").insert({
     requester_id: userId,
     addressee_id: data.id,
     status: "pending",
     created_at: new Date().toISOString(),
   });
+  if (insertError) {
+    throw new Error("Unable to send request.");
+  }
 }
 
 // Accept a friend request, then create a mutual friend link.
 export async function acceptFriendRequest(userId: string, requestId: string) {
-  const { data } = await supabase.from("friend_requests").select("*").eq("id", requestId).single();
-  if (!data || data.addressee_id !== userId) return;
-  await supabase.from("friend_requests").update({ status: "accepted" }).eq("id", requestId);
-  await supabase.from("friends").insert([
+  const { data, error } = await supabase.from("friend_requests").select("*").eq("id", requestId).single();
+  if (error || !data || data.addressee_id !== userId) {
+    throw new Error("Request not found.");
+  }
+  const { error: updateError } = await supabase.from("friend_requests").update({ status: "accepted" }).eq("id", requestId);
+  if (updateError) {
+    throw new Error("Unable to accept request.");
+  }
+  const { error: insertError } = await supabase.from("friends").insert([
     { user_id: data.requester_id, friend_id: data.addressee_id },
     { user_id: data.addressee_id, friend_id: data.requester_id },
   ]);
+  if (insertError) {
+    throw new Error("Unable to create friend link.");
+  }
 }
 
 // Decline a friend request.
 export async function declineFriendRequest(userId: string, requestId: string) {
-  const { data } = await supabase.from("friend_requests").select("*").eq("id", requestId).single();
-  if (!data || (data.addressee_id !== userId && data.requester_id !== userId)) return;
-  await supabase.from("friend_requests").update({ status: "declined" }).eq("id", requestId);
+  const { data, error } = await supabase.from("friend_requests").select("*").eq("id", requestId).single();
+  if (error || !data || (data.addressee_id !== userId && data.requester_id !== userId)) {
+    throw new Error("Request not found.");
+  }
+  const { error: updateError } = await supabase.from("friend_requests").update({ status: "declined" }).eq("id", requestId);
+  if (updateError) {
+    throw new Error("Unable to decline request.");
+  }
 }
 
 // Sign the user out.
