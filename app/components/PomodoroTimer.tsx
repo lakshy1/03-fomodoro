@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import LoadingButton from "./LoadingButton";
+import { useToast } from "./ToastProvider";
 import { usePomodoroStore, type PomodoroSettings } from "./usePomodoroStore";
 
 const MODE_META = {
@@ -226,6 +227,7 @@ export default function PomodoroTimer({
   const { state, setMode, toggle, start, reset, updateSettings, lastComplete, clearLastComplete } = usePomodoroStore(settings);
   const { mode, timeLeft, running, sessions } = state;
   const [showComplete, setShowComplete] = useState(false);
+  const { push } = useToast();
 
   // ── Popup refs (window.open fallback) ──
   const popupRef = useRef<Window | null>(null);
@@ -302,6 +304,29 @@ export default function PomodoroTimer({
   useEffect(() => {
     if (lastComplete) {
       setShowComplete(true);
+      push({
+        type: "info",
+        title: "Focus session completed",
+        message: `Focus session of ${lastComplete.minutes} min completed.`,
+        durationMs: 7000,
+        actions: [
+          {
+            label: "Dismiss",
+            variant: "ghost",
+            onClick: () => { setShowComplete(false); clearLastComplete(); },
+          },
+          {
+            label: "Start Again",
+            variant: "primary",
+            onClick: () => { setMode("focus"); start(); setShowComplete(false); clearLastComplete(); },
+          },
+          {
+            label: "Start Break",
+            variant: "glass",
+            onClick: () => { setMode("short"); start(); setShowComplete(false); clearLastComplete(); },
+          },
+        ],
+      });
       if (typeof window !== "undefined" && "Notification" in window) {
         if (Notification.permission === "granted") {
           new Notification("FomoDoro", { body: `Focus session of ${lastComplete.minutes} min completed!` });
@@ -548,24 +573,30 @@ export default function PomodoroTimer({
 
       {/* Session complete modal */}
       {showComplete && lastComplete && variant === "default" && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(6,8,16,0.65)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 120, padding: 20 }}>
-          <div style={{ width: "min(420px, 90vw)", background: "var(--glass-1)", border: "1px solid var(--glass-border)", borderRadius: 18, padding: 20, textAlign: "center" }}>
-            <div style={{ fontSize: 16, fontWeight: 700, color: "var(--text-1)" }}>Focus timer completed</div>
-            <div style={{ fontSize: 12, color: "var(--text-3)", marginTop: 6 }}>
+        <div className="pomodoro-overlay">
+          <div className="pomodoro-modal">
+            <div className="pomodoro-modal-title">Focus timer completed</div>
+            <div className="pomodoro-modal-sub">
               Your focus timer for {lastComplete.minutes} min got completed.
             </div>
-            <div style={{ display: "flex", gap: 10, marginTop: 16, justifyContent: "center" }}>
+            <div className="pomodoro-modal-actions">
               <LoadingButton
                 onClick={() => { setMode("focus"); start(); setShowComplete(false); clearLastComplete(); }}
-                style={{ border: "none", borderRadius: 10, padding: "8px 12px", background: "linear-gradient(135deg,#6366f1,#8b5cf6)", color: "white", fontWeight: 600 }}
+                className="fomo-btn fomo-btn-primary"
               >
                 Restart Focus
               </LoadingButton>
               <LoadingButton
                 onClick={() => { setMode("short"); start(); setShowComplete(false); clearLastComplete(); }}
-                style={{ border: "1px solid var(--glass-border)", borderRadius: 10, padding: "8px 12px", background: "var(--glass-2)", color: "var(--text-1)", fontWeight: 600 }}
+                className="fomo-btn fomo-btn-glass"
               >
                 Start Break
+              </LoadingButton>
+              <LoadingButton
+                onClick={() => { setShowComplete(false); clearLastComplete(); }}
+                className="fomo-btn fomo-btn-ghost"
+              >
+                Dismiss
               </LoadingButton>
             </div>
           </div>
