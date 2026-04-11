@@ -402,41 +402,29 @@ export default function PomodoroTimer({
     try { pipIntentRef.current = localStorage.getItem("pip_intent") === "1"; } catch { /* ignore */ }
   }, []);
 
-  // Auto-open the PiP/popup when the user switches away from the tab while
-  // the timer is running, provided they've previously clicked "pop out".
+  // When the user switches away from the tab, bring the PiP/popup to the front.
   //
-  // documentPictureInPicture.requestWindow() is BLOCKED without a user gesture,
-  // so we rely on the window.open fallback here. If popup blocker is active the
-  // browser will silently swallow the call — users need to allow popups for
-  // this origin once for auto-open to work.
+  // IMPORTANT: we do NOT call window.open() or documentPictureInPicture.requestWindow()
+  // here. Both APIs require a transient user activation (a real click), which has already
+  // expired by the time visibilitychange fires. Instead, the popup is opened proactively
+  // from the Play button onClick (a genuine user gesture), so by the time the user
+  // switches tabs the window already exists and we only need to focus() it.
   useEffect(() => {
     if (disablePopup) return;
     const handleVisibility = () => {
-      if (!document.hidden) return;            // tab is becoming active — nothing to do
-      if (!runningRef.current) return;         // timer is paused — no need to pop out
-      if (window.innerWidth <= 900) return;    // mobile — skip
+      if (!document.hidden) return;         // tab becoming active — nothing to do
+      if (!runningRef.current) return;      // timer paused — no need to pop out
+      if (window.innerWidth <= 900) return; // mobile — skip
 
-      // If a Document PiP window is already floating, leave it alone.
+      // Document PiP window floats automatically — nothing to do.
       if ("documentPictureInPicture" in window) {
-        const dpip = window as unknown as {
-          documentPictureInPicture: { window: Window | null };
-        };
+        const dpip = window as unknown as { documentPictureInPicture: { window: Window | null } };
         if (dpip.documentPictureInPicture.window) return;
       }
 
-      // If the popup window is already open, just focus it.
+      // Focus the popup window that was pre-opened when Play was clicked.
       if (popupRef.current && !popupRef.current.closed) {
         try { popupRef.current.focus(); } catch { /* ignore */ }
-        return;
-      }
-
-      // Open a new popup if the user has previously expressed PiP intent.
-      if (pipIntentRef.current) {
-        popupRef.current = window.open(
-          "/timer",
-          "fomodoro-timer",
-          "width=230,height=170,resizable=yes,scrollbars=no,location=no,toolbar=no,menubar=no,status=no"
-        );
       }
     };
     document.addEventListener("visibilitychange", handleVisibility);
@@ -552,7 +540,21 @@ export default function PomodoroTimer({
         </LoadingButton>
 
         <LoadingButton
-          onClick={toggle}
+          onClick={() => {
+            // When STARTING the timer (running===false → will become true), proactively
+            // open the PiP/popup while we still have a transient user activation.
+            // visibilitychange fires too late — by then the gesture has expired and
+            // window.open() is blocked by the browser popup policy.
+            if (!running && pipIntentRef.current && !disablePopup && window.innerWidth > 900) {
+              const hasDPiP =
+                "documentPictureInPicture" in window &&
+                !!(window as unknown as { documentPictureInPicture: { window: Window | null } })
+                  .documentPictureInPicture.window;
+              const hasPopup = !!(popupRef.current && !popupRef.current.closed);
+              if (!hasDPiP && !hasPopup) openPip();
+            }
+            toggle();
+          }}
           className="flex items-center justify-center rounded-full font-semibold transition-all duration-200"
           style={{
             width: 64, height: 64,
