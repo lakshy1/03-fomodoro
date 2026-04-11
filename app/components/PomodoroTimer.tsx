@@ -79,7 +79,7 @@ export function PipBody({
       style={{
         width: "100vw", height: "100vh",
         display: "flex", alignItems: "center",
-        gap: 10, padding: "0 10px 0 12px",
+        gap: 8, padding: "0 6px 0 8px",
         background:
           "radial-gradient(ellipse 160% 120% at 5% 50%, rgba(99,102,241,0.15), transparent 50%)," +
           "#06080f",
@@ -125,66 +125,68 @@ export function PipBody({
         </svg>
       </div>
 
-      {/* ── Right column: mac dots top-right, buttons centered ── */}
-      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", flex: 1, minWidth: 0, height: "100%", position: "relative" }}>
-        {/* Mac dots pinned top-right — inline width matches exactly 3 dots + gaps */}
-        <div style={{ position: "absolute", top: 7, right: 0 }}>
-          <MacDots onClose={onClose} onMin={onMin} onMax={onMax} />
-        </div>
+      {/* ── Right column: mac dots → play/pause → reset, all on the same center axis ── */}
+      <div style={{
+        display: "flex", flexDirection: "column",
+        alignItems: "center",      // horizontally centers every child on the same axis
+        justifyContent: "center",  // vertically centers the group in the window
+        flex: 1, minWidth: 0, height: "100%",
+        gap: 7,
+        paddingRight: 4,
+      }}>
+        {/* Mac dots — centered with siblings, not pinned to a corner */}
+        <MacDots onClose={onClose} onMin={onMin} onMax={onMax} />
 
-        {/* Buttons vertically centered */}
-        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8, margin: "auto 0" }}>
-          {/* Play / Pause */}
-          <button
-            onClick={toggle}
-            style={{
-              width: 40, height: 40, borderRadius: "50%", padding: 0,
-              background: running ? "rgba(99,102,241,0.20)" : color,
-              border: `1.5px solid ${running ? "rgba(99,102,241,0.38)" : "transparent"}`,
-              display: "flex", alignItems: "center", justifyContent: "center",
-              cursor: "pointer", flexShrink: 0,
-              boxShadow: running ? "none" : `0 2px 14px ${color}55`,
-              transition: "all 0.18s ease",
-            }}
-          >
-            {running ? (
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="rgba(255,255,255,0.92)">
-                <rect x="6" y="4" width="4" height="16" rx="1"/>
-                <rect x="14" y="4" width="4" height="16" rx="1"/>
-              </svg>
-            ) : (
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="rgba(255,255,255,0.92)">
-                <polygon points="6,3 20,12 6,21"/>
-              </svg>
-            )}
-          </button>
-
-          {/* Reset */}
-          <button
-            onClick={reset}
-            style={{
-              width: 32, height: 32, borderRadius: "50%", padding: 0,
-              background: "rgba(255,255,255,0.05)",
-              border: "1.5px solid rgba(255,255,255,0.10)",
-              display: "flex", alignItems: "center", justifyContent: "center",
-              cursor: "pointer", flexShrink: 0,
-              transition: "all 0.18s ease",
-            }}
-            onMouseEnter={e => {
-              (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.10)";
-              (e.currentTarget as HTMLElement).style.borderColor = "rgba(255,255,255,0.20)";
-            }}
-            onMouseLeave={e => {
-              (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.05)";
-              (e.currentTarget as HTMLElement).style.borderColor = "rgba(255,255,255,0.10)";
-            }}
-          >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.50)" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
-              <path d="M3 3v5h5"/>
+        {/* Play / Pause */}
+        <button
+          onClick={toggle}
+          style={{
+            width: 42, height: 42, borderRadius: "50%", padding: 0,
+            background: running ? "rgba(99,102,241,0.20)" : color,
+            border: `1.5px solid ${running ? "rgba(99,102,241,0.38)" : "transparent"}`,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            cursor: "pointer", flexShrink: 0,
+            boxShadow: running ? "none" : `0 2px 14px ${color}55`,
+            transition: "all 0.18s ease",
+          }}
+        >
+          {running ? (
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="rgba(255,255,255,0.92)">
+              <rect x="6" y="4" width="4" height="16" rx="1"/>
+              <rect x="14" y="4" width="4" height="16" rx="1"/>
             </svg>
-          </button>
-        </div>
+          ) : (
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="rgba(255,255,255,0.92)">
+              <polygon points="6,3 20,12 6,21"/>
+            </svg>
+          )}
+        </button>
+
+        {/* Reset */}
+        <button
+          onClick={reset}
+          style={{
+            width: 32, height: 32, borderRadius: "50%", padding: 0,
+            background: "rgba(255,255,255,0.05)",
+            border: "1.5px solid rgba(255,255,255,0.10)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            cursor: "pointer", flexShrink: 0,
+            transition: "all 0.18s ease",
+          }}
+          onMouseEnter={e => {
+            (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.10)";
+            (e.currentTarget as HTMLElement).style.borderColor = "rgba(255,255,255,0.20)";
+          }}
+          onMouseLeave={e => {
+            (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.05)";
+            (e.currentTarget as HTMLElement).style.borderColor = "rgba(255,255,255,0.10)";
+          }}
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.50)" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+            <path d="M3 3v5h5"/>
+          </svg>
+        </button>
       </div>
     </div>
   );
@@ -231,6 +233,13 @@ export default function PomodoroTimer({
 
   // ── Popup refs (window.open fallback) ──
   const popupRef = useRef<Window | null>(null);
+  // Tracks whether the user has ever clicked "pop out" — used to decide if we
+  // should auto-open the popup when they switch away from the tab.
+  const pipIntentRef = useRef<boolean>(false);
+  // Keep a ref to the latest running state so the visibilitychange listener
+  // doesn't need to re-register on every tick.
+  const runningRef = useRef<boolean>(state.running);
+  useEffect(() => { runningRef.current = state.running; }, [state.running]);
 
   // ── Per-minute DB sync refs ──
   const pendingSecondsRef  = useRef(0);
@@ -347,6 +356,9 @@ export default function PomodoroTimer({
   const pipRootRef = useRef<{ unmount: () => void } | null>(null);
   const openPip = useCallback(async () => {
     if (disablePopup || window.innerWidth <= 900) return;
+    // Record that the user explicitly wants a PiP/popup — enables auto-open on future tab switches.
+    pipIntentRef.current = true;
+    try { localStorage.setItem("pip_intent", "1"); } catch { /* ignore */ }
     // Document PiP — Chrome 116+ (truly chromeless)
     if ("documentPictureInPicture" in window) {
       try {
@@ -383,6 +395,52 @@ export default function PomodoroTimer({
         "width=230,height=170,resizable=yes,scrollbars=no,location=no,toolbar=no,menubar=no,status=no"
       );
     }
+  }, [disablePopup]);
+
+  // Restore pip intent from localStorage on mount so auto-open works after page refresh.
+  useEffect(() => {
+    try { pipIntentRef.current = localStorage.getItem("pip_intent") === "1"; } catch { /* ignore */ }
+  }, []);
+
+  // Auto-open the PiP/popup when the user switches away from the tab while
+  // the timer is running, provided they've previously clicked "pop out".
+  //
+  // documentPictureInPicture.requestWindow() is BLOCKED without a user gesture,
+  // so we rely on the window.open fallback here. If popup blocker is active the
+  // browser will silently swallow the call — users need to allow popups for
+  // this origin once for auto-open to work.
+  useEffect(() => {
+    if (disablePopup) return;
+    const handleVisibility = () => {
+      if (!document.hidden) return;            // tab is becoming active — nothing to do
+      if (!runningRef.current) return;         // timer is paused — no need to pop out
+      if (window.innerWidth <= 900) return;    // mobile — skip
+
+      // If a Document PiP window is already floating, leave it alone.
+      if ("documentPictureInPicture" in window) {
+        const dpip = window as unknown as {
+          documentPictureInPicture: { window: Window | null };
+        };
+        if (dpip.documentPictureInPicture.window) return;
+      }
+
+      // If the popup window is already open, just focus it.
+      if (popupRef.current && !popupRef.current.closed) {
+        try { popupRef.current.focus(); } catch { /* ignore */ }
+        return;
+      }
+
+      // Open a new popup if the user has previously expressed PiP intent.
+      if (pipIntentRef.current) {
+        popupRef.current = window.open(
+          "/timer",
+          "fomodoro-timer",
+          "width=230,height=170,resizable=yes,scrollbars=no,location=no,toolbar=no,menubar=no,status=no"
+        );
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => document.removeEventListener("visibilitychange", handleVisibility);
   }, [disablePopup]);
 
   // ── Derived display values ──

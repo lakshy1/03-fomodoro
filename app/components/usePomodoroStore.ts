@@ -125,6 +125,9 @@ export function usePomodoroStore(initialSettings?: Partial<PomodoroSettings>) {
   const idRef = useRef<string>(Math.random().toString(36).slice(2));
   const ownerRef = useRef<boolean>(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Tracks real wall-clock time of last tick so throttled background intervals
+  // still deduct the correct elapsed seconds (fixes timer drift when tab is hidden).
+  const lastTickTimeRef = useRef<number>(Date.now());
 
   const emitState = useCallback((next: PomodoroState) => {
     writeState(next);
@@ -223,9 +226,11 @@ export function usePomodoroStore(initialSettings?: Partial<PomodoroSettings>) {
       });
     }
     if (cmd === "toggle") {
+      lastTickTimeRef.current = Date.now();
       applyState((prev) => ({ ...prev, running: !prev.running }));
     }
     if (cmd === "start") {
+      lastTickTimeRef.current = Date.now();
       applyState((prev) => {
         const duration = durationFor(prev.mode, prev.settings);
         const timeLeft = prev.timeLeft === 0 ? duration : prev.timeLeft;
@@ -251,6 +256,27 @@ export function usePomodoroStore(initialSettings?: Partial<PomodoroSettings>) {
     }
   }, [applyState]);
 
+  // Catch up the timer when the tab becomes visible again after being
+  // backgrounded (the interval may not have fired while hidden).
+  useEffect(() => {
+    const catchUp = () => {
+      if (document.hidden || !ownerRef.current) return;
+      setState((prev) => {
+        if (!prev.running) return prev;
+        const now = Date.now();
+        const elapsed = Math.round((now - lastTickTimeRef.current) / 1000);
+        if (elapsed <= 0) return prev;
+        lastTickTimeRef.current = now;
+        const nextTime = Math.max(0, prev.timeLeft - elapsed);
+        const next: PomodoroState = { ...prev, timeLeft: nextTime, updatedAt: Date.now() };
+        emitState(next);
+        return next;
+      });
+    };
+    document.addEventListener("visibilitychange", catchUp);
+    return () => document.removeEventListener("visibilitychange", catchUp);
+  }, [emitState]);
+
   useEffect(() => {
     if (!ownerRef.current) return;
     if (!state.running) {
@@ -259,10 +285,17 @@ export function usePomodoroStore(initialSettings?: Partial<PomodoroSettings>) {
       return;
     }
     if (intervalRef.current) clearInterval(intervalRef.current);
+    // Reset the tick reference so the first interval tick measures correctly.
+    lastTickTimeRef.current = Date.now();
     intervalRef.current = setInterval(() => {
       setState((prev) => {
         if (!ownerRef.current) return prev;
-        const nextTime = prev.timeLeft - 1;
+        const now = Date.now();
+        // Use real elapsed ms so throttled background intervals still deduct
+        // the correct amount of time instead of always just 1 second.
+        const elapsed = Math.max(1, Math.round((now - lastTickTimeRef.current) / 1000));
+        lastTickTimeRef.current = now;
+        const nextTime = prev.timeLeft - elapsed;
         if (nextTime <= 0) {
           const completedMode = prev.mode;
           const durationMin = Math.round(durationFor(prev.mode, prev.settings) / 60);
