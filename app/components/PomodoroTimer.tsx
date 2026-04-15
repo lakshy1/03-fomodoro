@@ -23,9 +23,9 @@ const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
 const PIP_R = 42;
 const PIP_CIRCUM = 2 * Math.PI * PIP_R;
 const TIMER_NOTIFICATION_ID = 51001;
-const COMPLETE_NOTIFICATION_ID = 51002;
-const TIMER_CHANNEL_ID = "fomodoro-timer";
-const COMPLETE_ACTION_TYPE = "fomodoro-complete";
+const TIMER_CHANNEL_ID = "fomodoro-timer-live-v2";
+const TIMER_ACTION_TYPE = "fomodoro-timer-actions";
+const COMPLETE_ACTION_TYPE = "fomodoro-complete-actions";
 
 function pad(n: number) { return n.toString().padStart(2, "0"); }
 function formatCountdown(totalSeconds: number) {
@@ -260,7 +260,6 @@ export default function PomodoroTimer({
   const prevRunningRef     = useRef(false);
   const prevModeRef        = useRef<Mode>(mode);
   const nativeNotificationReadyRef = useRef(false);
-  const nativeTimerBucketRef = useRef<string | null>(null);
   const nativeTimerStateRef = useRef({ timeLeft: state.timeLeft, mode: state.mode, running: state.running });
 
   const flushMinutes = useCallback((minutes: number) => {
@@ -275,42 +274,54 @@ export default function PomodoroTimer({
     };
   }, [state.mode, state.running, state.timeLeft]);
 
-  const updateNativeTimerNotification = useCallback(async (nextSeconds: number, nextMode: Mode, runningNow: boolean) => {
+  const scheduleNativeTimerNotification = useCallback(async (nextSeconds: number, nextMode: Mode, runningNow: boolean) => {
+    if (!isAndroidNative || !nativeNotificationReadyRef.current) return;
+    if (nextSeconds <= 0) return;
+    try {
+      const modeLabel = nextMode === "focus" ? "Focus" : nextMode === "short" ? "Break" : "Break";
+      const stateLabel = runningNow ? "Running" : "Paused";
+      await LocalNotifications.schedule({
+        notifications: [
+          {
+            id: TIMER_NOTIFICATION_ID,
+            title: `FomoDoro`,
+            body: `${modeLabel} · ${formatCountdown(nextSeconds)}`,
+            largeBody: `${modeLabel}\n${formatCountdown(nextSeconds)}\n${stateLabel}`,
+            summaryText: `${modeLabel} • ${stateLabel}`,
+            channelId: TIMER_CHANNEL_ID,
+            ongoing: true,
+            autoCancel: false,
+            actionTypeId: TIMER_ACTION_TYPE,
+            iconColor: "#6366f1",
+            schedule: {
+              at: new Date(Date.now() + 100),
+              allowWhileIdle: true,
+            },
+          },
+        ],
+      });
+    } catch {
+      // ignore native notification failures
+    }
+  }, [isAndroidNative]);
+
+  const scheduleNativeCompleteNotification = useCallback(async (completedMinutes: number) => {
     if (!isAndroidNative || !nativeNotificationReadyRef.current) return;
     try {
-      if (!runningNow || nextSeconds <= 0) {
-        nativeTimerBucketRef.current = null;
-        const delivered = await LocalNotifications.getDeliveredNotifications();
-        const timerDelivered = delivered.notifications.filter((item) => item.id === TIMER_NOTIFICATION_ID);
-        if (timerDelivered.length > 0) {
-          await LocalNotifications.removeDeliveredNotifications({ notifications: timerDelivered });
-        }
-        await LocalNotifications.cancel({ notifications: [{ id: TIMER_NOTIFICATION_ID }] });
-        return;
-      }
-
-      const bucket = nextSeconds > 120 ? `m:${Math.floor(nextSeconds / 60)}` : `s:${nextSeconds}`;
-      if (nativeTimerBucketRef.current === bucket) return;
-      nativeTimerBucketRef.current = bucket;
-
-      const modeLabel = nextMode === "focus" ? "Focus" : nextMode === "short" ? "Short break" : "Long break";
-      const body = `${modeLabel} ends in ${formatCountdown(nextSeconds)}`;
-
-      const delivered = await LocalNotifications.getDeliveredNotifications();
-      const timerDelivered = delivered.notifications.filter((item) => item.id === TIMER_NOTIFICATION_ID);
-      if (timerDelivered.length > 0) {
-        await LocalNotifications.removeDeliveredNotifications({ notifications: timerDelivered });
-      }
       await LocalNotifications.cancel({ notifications: [{ id: TIMER_NOTIFICATION_ID }] });
       await LocalNotifications.schedule({
         notifications: [
           {
             id: TIMER_NOTIFICATION_ID,
             title: "FomoDoro",
-            body,
+            body: `Done · ${completedMinutes}m`,
+            largeBody: `Done · ${completedMinutes}m\nAgain, break, or close.`,
+            summaryText: "Done",
             channelId: TIMER_CHANNEL_ID,
-            ongoing: true,
+            ongoing: false,
             autoCancel: false,
+            actionTypeId: COMPLETE_ACTION_TYPE,
+            iconColor: "#10b981",
             schedule: {
               at: new Date(Date.now() + 100),
               allowWhileIdle: true,
@@ -374,10 +385,12 @@ export default function PomodoroTimer({
       try {
         await LocalNotifications.createChannel({
           id: TIMER_CHANNEL_ID,
-          name: "Timer updates",
+          name: "FomoDoro timer",
           description: "Live FomoDoro countdown updates",
-          importance: 4,
+          importance: 2,
+          visibility: 1,
           vibration: false,
+          lights: false,
         });
         const permissions = await LocalNotifications.checkPermissions();
         if (permissions.display !== "granted") {
@@ -386,11 +399,18 @@ export default function PomodoroTimer({
         await LocalNotifications.registerActionTypes({
           types: [
             {
+              id: TIMER_ACTION_TYPE,
+              actions: [
+                { id: "toggle", title: "Play / Pause", foreground: true },
+                { id: "reset", title: "Reset", foreground: true },
+              ],
+            },
+            {
               id: COMPLETE_ACTION_TYPE,
               actions: [
-                { id: "restart", title: "Restart", foreground: true },
+                { id: "restart", title: "Again", foreground: true },
                 { id: "break", title: "Break", foreground: true },
-                { id: "dismiss", title: "Dismiss" },
+                { id: "dismiss", title: "Close" },
               ],
             },
           ],
@@ -398,7 +418,7 @@ export default function PomodoroTimer({
         if (!cancelled) {
           nativeNotificationReadyRef.current = true;
           const current = nativeTimerStateRef.current;
-          void updateNativeTimerNotification(current.timeLeft, current.mode, current.running);
+          void scheduleNativeTimerNotification(current.timeLeft, current.mode, current.running);
         }
       } catch {
         nativeNotificationReadyRef.current = false;
@@ -408,22 +428,26 @@ export default function PomodoroTimer({
     return () => {
       cancelled = true;
     };
-  }, [isAndroidNative, updateNativeTimerNotification]);
+  }, [isAndroidNative, scheduleNativeTimerNotification]);
 
   useEffect(() => {
     if (!isAndroidNative) return;
     let listener: { remove: () => Promise<void> } | null = null;
 
     void LocalNotifications.addListener("localNotificationActionPerformed", async ({ actionId, notification }) => {
-      if (notification.id !== COMPLETE_NOTIFICATION_ID) return;
+      if (notification.id !== TIMER_NOTIFICATION_ID) return;
+
+      if (notification.actionTypeId === TIMER_ACTION_TYPE) {
+        if (actionId === "toggle") {
+          toggle();
+        } else if (actionId === "reset") {
+          reset();
+        }
+        return;
+      }
 
       try {
-        const delivered = await LocalNotifications.getDeliveredNotifications();
-        const completeDelivered = delivered.notifications.filter((item) => item.id === COMPLETE_NOTIFICATION_ID);
-        if (completeDelivered.length > 0) {
-          await LocalNotifications.removeDeliveredNotifications({ notifications: completeDelivered });
-        }
-        await LocalNotifications.cancel({ notifications: [{ id: COMPLETE_NOTIFICATION_ID }] });
+        await LocalNotifications.cancel({ notifications: [{ id: TIMER_NOTIFICATION_ID }] });
       } catch {
         // ignore
       }
@@ -444,12 +468,14 @@ export default function PomodoroTimer({
     return () => {
       void listener?.remove();
     };
-  }, [clearLastComplete, isAndroidNative, setMode, start]);
+  }, [clearLastComplete, isAndroidNative, reset, setMode, start, toggle]);
 
   useEffect(() => {
     if (!isAndroidNative) return;
-    void updateNativeTimerNotification(state.timeLeft, state.mode, state.running);
-  }, [isAndroidNative, state.mode, state.running, state.timeLeft, updateNativeTimerNotification]);
+    if (state.timeLeft > 0) {
+      void scheduleNativeTimerNotification(state.timeLeft, state.mode, state.running);
+    }
+  }, [isAndroidNative, scheduleNativeTimerNotification, state.mode, state.running, state.timeLeft]);
 
   // On session complete: flush remaining unsynced minutes
   useEffect(() => {
@@ -469,59 +495,33 @@ export default function PomodoroTimer({
   useEffect(() => {
     if (lastComplete) {
       setShowComplete(true);
-      push({
-        type: "info",
-        title: "Focus session completed",
-        message: `Focus session of ${lastComplete.minutes} min completed.`,
-        durationMs: 7000,
-        actions: [
-          {
-            label: "Dismiss",
-            variant: "ghost",
-            onClick: () => { setShowComplete(false); clearLastComplete(); },
-          },
-          {
-            label: "Start Again",
-            variant: "primary",
-            onClick: () => { setMode("focus"); start(); setShowComplete(false); clearLastComplete(); },
-          },
-          {
-            label: "Start Break",
-            variant: "glass",
-            onClick: () => { setMode("short"); start(); setShowComplete(false); clearLastComplete(); },
-          },
-        ],
-      });
+      if (!isAndroidNative) {
+        push({
+          type: "info",
+          title: "Focus session completed",
+          message: `Focus session of ${lastComplete.minutes} min completed.`,
+          durationMs: 7000,
+          actions: [
+            {
+              label: "Dismiss",
+              variant: "ghost",
+              onClick: () => { setShowComplete(false); clearLastComplete(); },
+            },
+            {
+              label: "Start Again",
+              variant: "primary",
+              onClick: () => { setMode("focus"); start(); setShowComplete(false); clearLastComplete(); },
+            },
+            {
+              label: "Start Break",
+              variant: "glass",
+              onClick: () => { setMode("short"); start(); setShowComplete(false); clearLastComplete(); },
+            },
+          ],
+        });
+      }
       if (isAndroidNative && nativeNotificationReadyRef.current) {
-        void (async () => {
-          try {
-            const delivered = await LocalNotifications.getDeliveredNotifications();
-            const timerDelivered = delivered.notifications.filter((item) => item.id === TIMER_NOTIFICATION_ID);
-            if (timerDelivered.length > 0) {
-              await LocalNotifications.removeDeliveredNotifications({ notifications: timerDelivered });
-            }
-            await LocalNotifications.cancel({ notifications: [{ id: TIMER_NOTIFICATION_ID }] });
-            await LocalNotifications.schedule({
-              notifications: [
-                {
-                  id: COMPLETE_NOTIFICATION_ID,
-                  title: "FomoDoro",
-                  body: `Focus session of ${lastComplete.minutes} min completed.`,
-                  channelId: TIMER_CHANNEL_ID,
-                  actionTypeId: COMPLETE_ACTION_TYPE,
-                  ongoing: false,
-                  autoCancel: false,
-                  schedule: {
-                    at: new Date(Date.now() + 150),
-                    allowWhileIdle: true,
-                  },
-                },
-              ],
-            });
-          } catch {
-            // ignore native notification failures
-          }
-        })();
+        void scheduleNativeCompleteNotification(lastComplete.minutes);
       } else if (typeof window !== "undefined" && "Notification" in window) {
         if (Notification.permission === "granted") {
           new Notification("FomoDoro", { body: `Focus session of ${lastComplete.minutes} min completed!` });
@@ -533,7 +533,7 @@ export default function PomodoroTimer({
         }
       }
     }
-  }, [lastComplete]);
+  }, [isAndroidNative, lastComplete, scheduleNativeCompleteNotification, push, clearLastComplete, setMode, start]);
 
   // ── Document PiP / popup — must be triggered by a user click ──
   // NOTE: documentPictureInPicture.requestWindow() REQUIRES a user gesture.
@@ -712,10 +712,10 @@ export default function PomodoroTimer({
       </div>
 
       {/* Controls */}
-      <div className="pomodoro-controls flex items-center gap-4">
+      <div className="pomodoro-controls flex items-center gap-4 justify-center w-full">
         <LoadingButton
           onClick={reset}
-          className="flex items-center justify-center rounded-full transition-all duration-200"
+          className="pomodoro-control-btn pomodoro-control-btn-secondary flex items-center justify-center rounded-full transition-all duration-200"
           style={{ width: 44, height: 44, background: "var(--glass-2)", border: "1px solid var(--glass-border)", color: "var(--text-2)" }}
           title="Reset"
         >
@@ -741,7 +741,7 @@ export default function PomodoroTimer({
             }
             toggle();
           }}
-          className="flex items-center justify-center rounded-full font-semibold transition-all duration-200"
+          className="pomodoro-control-btn pomodoro-control-btn-primary flex items-center justify-center rounded-full font-semibold transition-all duration-200"
           style={{
             width: 64, height: 64,
             background: running ? "rgba(99,102,241,0.25)" : current.color,
@@ -766,7 +766,7 @@ export default function PomodoroTimer({
         {!disablePopup && (
           <LoadingButton
             onClick={openPip}
-            className="flex items-center justify-center rounded-full transition-all duration-200"
+            className="pomodoro-control-btn pomodoro-control-btn-secondary flex items-center justify-center rounded-full transition-all duration-200"
             style={{ width: 44, height: 44, background: "var(--glass-2)", border: "1px solid var(--glass-border)", color: "var(--text-2)" }}
             title="Pop out timer"
           >
@@ -778,7 +778,7 @@ export default function PomodoroTimer({
             </svg>
           </LoadingButton>
         )}
-        {disablePopup && <div style={{ width: 44, height: 44, flexShrink: 0 }} />}
+        {disablePopup && <div className="pomodoro-control-placeholder" style={{ width: 44, height: 44, flexShrink: 0 }} />}
       </div>
 
       {/* Stats row */}
@@ -788,7 +788,7 @@ export default function PomodoroTimer({
           style={{ background: "var(--glass-1)", border: "1px solid var(--glass-border)" }}
         >
           <Stat label="Sessions" value={sessions.toString()} color="var(--accent)" />
-          <div style={{ width: 1, height: 32, background: "var(--glass-border)" }} />
+          <div className="pomodoro-stat-sep" style={{ width: 1, height: 32, background: "var(--glass-border)" }} />
           <Stat
             label="Focus time"
             value={
@@ -798,7 +798,7 @@ export default function PomodoroTimer({
             }
             color="#10b981"
           />
-          <div style={{ width: 1, height: 32, background: "var(--glass-border)" }} />
+          <div className="pomodoro-stat-sep" style={{ width: 1, height: 32, background: "var(--glass-border)" }} />
           <Stat label="Daily goal" value={`${Math.min(sessions, state.settings.dailyGoal)}/${state.settings.dailyGoal}`} color="#06b6d4" />
         </div>
       )}
@@ -854,9 +854,9 @@ export default function PomodoroTimer({
 
 function Stat({ label, value, color }: { label: string; value: React.ReactNode; color: string }) {
   return (
-    <div className="flex flex-col items-center gap-0.5 flex-1">
-      <span className="text-xl font-semibold" style={{ color }}>{value}</span>
-      <span className="text-xs" style={{ color: "var(--text-3)", whiteSpace: "nowrap" }}>{label}</span>
+    <div className="pomodoro-stat flex flex-col items-center gap-0.5 flex-1 min-w-0">
+      <span className="pomodoro-stat-value text-xl font-semibold" style={{ color }}>{value}</span>
+      <span className="pomodoro-stat-label text-xs" style={{ color: "var(--text-3)", whiteSpace: "nowrap" }}>{label}</span>
     </div>
   );
 }

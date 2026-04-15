@@ -382,35 +382,76 @@
   }
 
   .pomodoro-wrap {
-    gap: 18px !important;
+    gap: 12px !important;
     max-width: none !important;
-    padding-top: 4px !important;
-    padding-bottom: 10px !important;
+    padding-top: 2px !important;
+    padding-bottom: 6px !important;
     align-items: stretch !important;
   }
 
   .pomodoro-ring {
-    width: min(74vw, 245px) !important;
-    height: min(74vw, 245px) !important;
+    width: min(66vw, 220px) !important;
+    height: min(66vw, 220px) !important;
     align-self: center;
   }
 
   .pomodoro-time {
-    font-size: 42px !important;
+    font-size: 36px !important;
   }
 
   .pomodoro-controls {
     gap: 10px !important;
+    justify-content: center !important;
+    align-self: center !important;
+    width: auto !important;
+  }
+
+  .pomodoro-control-btn {
+    flex-shrink: 0;
+  }
+
+  .pomodoro-control-btn-secondary,
+  .pomodoro-control-placeholder {
+    width: 40px !important;
+    height: 40px !important;
+  }
+
+  .pomodoro-control-btn-primary {
+    width: 56px !important;
+    height: 56px !important;
+  }
+
+  .pomodoro-control-btn-primary svg {
+    width: 18px !important;
+    height: 18px !important;
   }
 
   .pomodoro-stats {
-    gap: 10px !important;
-    padding: 12px 14px !important;
-    flex-wrap: wrap;
+    gap: 4px !important;
+    padding: 8px 8px !important;
+    display: grid !important;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    align-items: stretch;
   }
 
-  .pomodoro-stats > div {
-    min-width: 92px;
+  .pomodoro-stat {
+    min-width: 0;
+  }
+
+  .pomodoro-stat-sep {
+    display: none !important;
+  }
+
+  .pomodoro-stat-value {
+    font-size: 15px !important;
+    line-height: 1 !important;
+    white-space: nowrap;
+  }
+
+  .pomodoro-stat-label {
+    font-size: 10px !important;
+    line-height: 1.1 !important;
+    text-align: center;
   }
 }
 
