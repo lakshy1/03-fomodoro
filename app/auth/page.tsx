@@ -6,6 +6,7 @@ import { supabase } from "../lib/supabaseClient";
 import { gsap } from "gsap";
 import LoadingButton from "../components/LoadingButton";
 import { useToast } from "../components/ToastProvider";
+import { getAppBaseUrl } from "../lib/appUrl";
 
 type Mode = "login" | "signup" | "reset";
 
@@ -114,13 +115,13 @@ export default function AuthPage() {
     setLoading(true);
     try {
       if (mode === "reset") {
-        const redirectTo = `${window.location.origin}/auth/reset`;
+        const redirectTo = `${getAppBaseUrl()}/auth/reset`;
         const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
         if (resetError) throw resetError;
         setSuccess("Password reset link sent. Check your email.");
         push({ type: "success", title: "Reset link sent", message: "Check your email inbox." });
       } else if (mode === "signup") {
-        const emailRedirectTo = `${window.location.origin}/auth`;
+        const emailRedirectTo = `${getAppBaseUrl()}/auth`;
         const { error: signUpError } = await supabase.auth.signUp({
           email,
           password,
@@ -251,7 +252,6 @@ export default function AuthPage() {
         className="auth-grid"
       >
         <div
-          className="auth-side"
           style={{
             background: "linear-gradient(145deg, rgba(15,19,36,0.9), rgba(6,8,16,0.85))",
             border: "1px solid rgba(99,102,241,0.15)",
@@ -265,6 +265,7 @@ export default function AuthPage() {
             position: "relative",
             overflow: "hidden",
           }}
+          className="auth-side"
         >
           <div style={{ fontSize: 12, letterSpacing: "0.2em", textTransform: "uppercase", color: "#a5b4fc" }}>
             FomoDoro
@@ -321,9 +322,9 @@ export default function AuthPage() {
             transformStyle: "preserve-3d",
             backdropFilter: "blur(20px)",
           }}
-          className={error ? "shake" : undefined}
+          className={`auth-card ${error ? "shake" : ""}`}
         >
-          <div style={{ display: "flex", gap: 8, marginBottom: 18 }}>
+          <div className="auth-action-row" style={{ display: "flex", gap: 8, marginBottom: 18 }}>
             {(["login", "signup"] as Mode[]).map((m) => (
               <LoadingButton
                 key={m}
@@ -348,7 +349,7 @@ export default function AuthPage() {
           <h1 style={{ fontSize: 20, fontWeight: 700, color: "var(--text-1)" }}>{heading}</h1>
           <p style={{ fontSize: 12, color: "var(--text-3)", marginTop: 6 }}>{subheading}</p>
 
-          <form onSubmit={handleSubmit} style={{ marginTop: 18, display: "flex", flexDirection: "column", gap: 12 }}>
+          <form onSubmit={handleSubmit} className="auth-input-stack" style={{ marginTop: 18, display: "flex", flexDirection: "column", gap: 12 }}>
             {mode === "signup" && (
               <GlowInput
                 placeholder="Name"

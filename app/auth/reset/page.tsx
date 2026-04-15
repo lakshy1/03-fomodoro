@@ -215,6 +215,7 @@ export default function ResetPasswordPage() {
             position: "relative",
             overflow: "hidden",
           }}
+          className="auth-side"
         >
           <div style={{ fontSize: 12, letterSpacing: "0.2em", textTransform: "uppercase", color: "#a5b4fc" }}>
             FomoDoro
@@ -270,7 +271,7 @@ export default function ResetPasswordPage() {
             transformStyle: "preserve-3d",
             backdropFilter: "blur(20px)",
           }}
-          className={error ? "shake" : undefined}
+          className={`auth-card ${error ? "shake" : ""}`}
         >
           <h1 style={{ fontSize: 20, fontWeight: 700, color: "var(--text-1)" }}>Set a new password</h1>
           <p style={{ fontSize: 12, color: "var(--text-3)", marginTop: 6 }}>

@@ -1,6 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { App } from "@capacitor/app";
+import { Capacitor } from "@capacitor/core";
+import { LocalNotifications } from "@capacitor/local-notifications";
 import LoadingButton from "./LoadingButton";
 import { useToast } from "./ToastProvider";
 import { usePomodoroStore, type PomodoroSettings } from "./usePomodoroStore";
@@ -19,8 +22,16 @@ const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
 // PiP ring uses a 0-100 viewBox
 const PIP_R = 42;
 const PIP_CIRCUM = 2 * Math.PI * PIP_R;
+const TIMER_NOTIFICATION_ID = 51001;
+const COMPLETE_NOTIFICATION_ID = 51002;
+const TIMER_CHANNEL_ID = "fomodoro-timer";
+const COMPLETE_ACTION_TYPE = "fomodoro-complete";
 
 function pad(n: number) { return n.toString().padStart(2, "0"); }
+function formatCountdown(totalSeconds: number) {
+  const safe = Math.max(0, Math.floor(totalSeconds));
+  return `${Math.floor(safe / 60)}:${pad(safe % 60)}`;
+}
 
 /* ─────────────────────────────────────────────────────────────
    PipTimerContent — rendered inside the Document PiP window.
@@ -230,6 +241,7 @@ export default function PomodoroTimer({
   const { mode, timeLeft, running, sessions } = state;
   const [showComplete, setShowComplete] = useState(false);
   const { push } = useToast();
+  const isAndroidNative = Capacitor.isNativePlatform() && Capacitor.getPlatform() === "android";
 
   // ── Popup refs (window.open fallback) ──
   const popupRef = useRef<Window | null>(null);
@@ -247,10 +259,69 @@ export default function PomodoroTimer({
   const prevTimeLeftRef    = useRef<number | null>(null);
   const prevRunningRef     = useRef(false);
   const prevModeRef        = useRef<Mode>(mode);
+  const nativeNotificationReadyRef = useRef(false);
+  const nativeTimerBucketRef = useRef<string | null>(null);
+  const nativeTimerStateRef = useRef({ timeLeft: state.timeLeft, mode: state.mode, running: state.running });
 
   const flushMinutes = useCallback((minutes: number) => {
     if (minutes > 0) onSyncMinutes?.(minutes);
   }, [onSyncMinutes]);
+
+  useEffect(() => {
+    nativeTimerStateRef.current = {
+      timeLeft: state.timeLeft,
+      mode: state.mode,
+      running: state.running,
+    };
+  }, [state.mode, state.running, state.timeLeft]);
+
+  const updateNativeTimerNotification = useCallback(async (nextSeconds: number, nextMode: Mode, runningNow: boolean) => {
+    if (!isAndroidNative || !nativeNotificationReadyRef.current) return;
+    try {
+      if (!runningNow || nextSeconds <= 0) {
+        nativeTimerBucketRef.current = null;
+        const delivered = await LocalNotifications.getDeliveredNotifications();
+        const timerDelivered = delivered.notifications.filter((item) => item.id === TIMER_NOTIFICATION_ID);
+        if (timerDelivered.length > 0) {
+          await LocalNotifications.removeDeliveredNotifications({ notifications: timerDelivered });
+        }
+        await LocalNotifications.cancel({ notifications: [{ id: TIMER_NOTIFICATION_ID }] });
+        return;
+      }
+
+      const bucket = nextSeconds > 120 ? `m:${Math.floor(nextSeconds / 60)}` : `s:${nextSeconds}`;
+      if (nativeTimerBucketRef.current === bucket) return;
+      nativeTimerBucketRef.current = bucket;
+
+      const modeLabel = nextMode === "focus" ? "Focus" : nextMode === "short" ? "Short break" : "Long break";
+      const body = `${modeLabel} ends in ${formatCountdown(nextSeconds)}`;
+
+      const delivered = await LocalNotifications.getDeliveredNotifications();
+      const timerDelivered = delivered.notifications.filter((item) => item.id === TIMER_NOTIFICATION_ID);
+      if (timerDelivered.length > 0) {
+        await LocalNotifications.removeDeliveredNotifications({ notifications: timerDelivered });
+      }
+      await LocalNotifications.cancel({ notifications: [{ id: TIMER_NOTIFICATION_ID }] });
+      await LocalNotifications.schedule({
+        notifications: [
+          {
+            id: TIMER_NOTIFICATION_ID,
+            title: "FomoDoro",
+            body,
+            channelId: TIMER_CHANNEL_ID,
+            ongoing: true,
+            autoCancel: false,
+            schedule: {
+              at: new Date(Date.now() + 100),
+              allowWhileIdle: true,
+            },
+          },
+        ],
+      });
+    } catch {
+      // ignore native notification failures
+    }
+  }, [isAndroidNative]);
 
   // Track elapsed focus seconds → flush every 60 s
   useEffect(() => {
@@ -295,6 +366,91 @@ export default function PomodoroTimer({
     prevRunningRef.current = nowRunning;
   }, [state.timeLeft, state.running, state.mode, flushMinutes]);
 
+  useEffect(() => {
+    if (!isAndroidNative) return;
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        await LocalNotifications.createChannel({
+          id: TIMER_CHANNEL_ID,
+          name: "Timer updates",
+          description: "Live FomoDoro countdown updates",
+          importance: 4,
+          vibration: false,
+        });
+        const permissions = await LocalNotifications.checkPermissions();
+        if (permissions.display !== "granted") {
+          await LocalNotifications.requestPermissions();
+        }
+        await LocalNotifications.registerActionTypes({
+          types: [
+            {
+              id: COMPLETE_ACTION_TYPE,
+              actions: [
+                { id: "restart", title: "Restart", foreground: true },
+                { id: "break", title: "Break", foreground: true },
+                { id: "dismiss", title: "Dismiss" },
+              ],
+            },
+          ],
+        });
+        if (!cancelled) {
+          nativeNotificationReadyRef.current = true;
+          const current = nativeTimerStateRef.current;
+          void updateNativeTimerNotification(current.timeLeft, current.mode, current.running);
+        }
+      } catch {
+        nativeNotificationReadyRef.current = false;
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isAndroidNative, updateNativeTimerNotification]);
+
+  useEffect(() => {
+    if (!isAndroidNative) return;
+    let listener: { remove: () => Promise<void> } | null = null;
+
+    void LocalNotifications.addListener("localNotificationActionPerformed", async ({ actionId, notification }) => {
+      if (notification.id !== COMPLETE_NOTIFICATION_ID) return;
+
+      try {
+        const delivered = await LocalNotifications.getDeliveredNotifications();
+        const completeDelivered = delivered.notifications.filter((item) => item.id === COMPLETE_NOTIFICATION_ID);
+        if (completeDelivered.length > 0) {
+          await LocalNotifications.removeDeliveredNotifications({ notifications: completeDelivered });
+        }
+        await LocalNotifications.cancel({ notifications: [{ id: COMPLETE_NOTIFICATION_ID }] });
+      } catch {
+        // ignore
+      }
+
+      if (actionId === "restart") {
+        setMode("focus");
+        start();
+      } else if (actionId === "break") {
+        setMode("short");
+        start();
+      }
+      setShowComplete(false);
+      clearLastComplete();
+    }).then((handle) => {
+      listener = handle;
+    });
+
+    return () => {
+      void listener?.remove();
+    };
+  }, [clearLastComplete, isAndroidNative, setMode, start]);
+
+  useEffect(() => {
+    if (!isAndroidNative) return;
+    void updateNativeTimerNotification(state.timeLeft, state.mode, state.running);
+  }, [isAndroidNative, state.mode, state.running, state.timeLeft, updateNativeTimerNotification]);
+
   // On session complete: flush remaining unsynced minutes
   useEffect(() => {
     if (!lastComplete) return;
@@ -336,7 +492,37 @@ export default function PomodoroTimer({
           },
         ],
       });
-      if (typeof window !== "undefined" && "Notification" in window) {
+      if (isAndroidNative && nativeNotificationReadyRef.current) {
+        void (async () => {
+          try {
+            const delivered = await LocalNotifications.getDeliveredNotifications();
+            const timerDelivered = delivered.notifications.filter((item) => item.id === TIMER_NOTIFICATION_ID);
+            if (timerDelivered.length > 0) {
+              await LocalNotifications.removeDeliveredNotifications({ notifications: timerDelivered });
+            }
+            await LocalNotifications.cancel({ notifications: [{ id: TIMER_NOTIFICATION_ID }] });
+            await LocalNotifications.schedule({
+              notifications: [
+                {
+                  id: COMPLETE_NOTIFICATION_ID,
+                  title: "FomoDoro",
+                  body: `Focus session of ${lastComplete.minutes} min completed.`,
+                  channelId: TIMER_CHANNEL_ID,
+                  actionTypeId: COMPLETE_ACTION_TYPE,
+                  ongoing: false,
+                  autoCancel: false,
+                  schedule: {
+                    at: new Date(Date.now() + 150),
+                    allowWhileIdle: true,
+                  },
+                },
+              ],
+            });
+          } catch {
+            // ignore native notification failures
+          }
+        })();
+      } else if (typeof window !== "undefined" && "Notification" in window) {
         if (Notification.permission === "granted") {
           new Notification("FomoDoro", { body: `Focus session of ${lastComplete.minutes} min completed!` });
         } else if (Notification.permission !== "denied") {

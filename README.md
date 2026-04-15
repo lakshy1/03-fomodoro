@@ -1,36 +1,45 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# FomoDoro
+
+FomoDoro is a focused productivity app built with Next.js and Capacitor. The web app now exports as static assets, which lets the same mobile layout run inside an Android WebView.
+
+## Stack
+
+- Next.js 16
+- React 19
+- Capacitor Android
+- Supabase
 
 ## Getting Started
 
-First, run the development server:
-
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open `http://localhost:3000` in a browser.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Android Build
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+The repo now includes a Capacitor Android project in `android/`.
 
-## Learn More
+```bash
+npm run cap:android
+npm run cap:open:android
+```
 
-To learn more about Next.js, take a look at the following resources:
+`npm run cap:android` builds the static Next export into `out/` and syncs it into the Android project. `npm run cap:open:android` opens the native project in Android Studio.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Auth Redirects
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+If you want Supabase email sign-in or password reset links to point at your hosted web app instead of the local WebView origin, set:
 
-## Deploy on Vercel
+```bash
+NEXT_PUBLIC_APP_URL=https://your-domain.example
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+If that variable is not set, the app falls back to the current browser origin.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Notes
+
+- The web build uses `output: "export"` so the app can ship as static files to Capacitor.
+- Generated build output such as `out/` and the synced Android web assets should not be edited by hand.

@@ -156,6 +156,23 @@
   animation: sound-pill-pulse 1.6s ease-in-out infinite;
 }
 
+.mobile-dock-btn {
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+.mobile-dock-btn:active {
+  transform: translateY(1px) scale(0.96) !important;
+}
+
+.mobile-dock-icon {
+  transition: transform 0.16s ease, background 0.16s ease, color 0.16s ease;
+}
+
+.mobile-dock-btn:active .mobile-dock-icon {
+  transform: scale(1.12);
+}
+
 @keyframes ambient-pulse {
   0% { transform: scale(0.98); opacity: 0.6; }
   60% { transform: scale(1.02); opacity: 0.2; }
@@ -338,6 +355,65 @@
   }
 }
 
+@media (max-width: 720px) {
+  .auth-grid {
+    gap: 16px !important;
+  }
+
+  .auth-card {
+    padding: 18px !important;
+    border-radius: 20px !important;
+  }
+
+  .auth-side {
+    display: none !important;
+  }
+
+  .auth-input-stack {
+    gap: 10px !important;
+  }
+
+  .auth-action-row {
+    flex-direction: column;
+  }
+
+  .auth-action-row > * {
+    width: 100%;
+  }
+
+  .pomodoro-wrap {
+    gap: 18px !important;
+    max-width: none !important;
+    padding-top: 4px !important;
+    padding-bottom: 10px !important;
+    align-items: stretch !important;
+  }
+
+  .pomodoro-ring {
+    width: min(74vw, 245px) !important;
+    height: min(74vw, 245px) !important;
+    align-self: center;
+  }
+
+  .pomodoro-time {
+    font-size: 42px !important;
+  }
+
+  .pomodoro-controls {
+    gap: 10px !important;
+  }
+
+  .pomodoro-stats {
+    gap: 10px !important;
+    padding: 12px 14px !important;
+    flex-wrap: wrap;
+  }
+
+  .pomodoro-stats > div {
+    min-width: 92px;
+  }
+}
+
 @media (min-width: 901px) and (max-height: 820px) {
   .pomodoro-wrap {
     gap: 18px;
@@ -434,6 +510,25 @@ body {
   font-family: var(--font-sans), system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
   transition: background-color 0.35s ease, color 0.2s ease;
+}
+
+.app-shell {
+  min-height: var(--app-height, 100dvh);
+  height: var(--app-height, 100dvh);
+  display: flex;
+  flex-direction: column;
+  padding:
+    max(env(safe-area-inset-top), 12px)
+    max(env(safe-area-inset-right), 12px)
+    max(env(safe-area-inset-bottom), 12px)
+    max(env(safe-area-inset-left), 12px);
+}
+
+@supports (height: 100svh) {
+  .app-shell {
+    min-height: var(--app-height, 100svh);
+    height: var(--app-height, 100svh);
+  }
 }
 
 /* ─── Mesh gradient ──────────────────────────────────────────── */

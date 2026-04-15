@@ -3,6 +3,8 @@
 import { useState, useEffect, useRef, useCallback, type InputHTMLAttributes } from "react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
+import { App } from "@capacitor/app";
+import { Capacitor } from "@capacitor/core";
 import {
   acceptFriendRequest,
   createFriendRequestByCode,
@@ -309,6 +311,7 @@ const ICON_COL = 44;
 const SIDEBAR_INSET = 16;
 const SIDEBAR_COLLAPSED_W = 64;
 const SIDEBAR_EXPANDED_W = 200;
+const SIDEBAR_MOBILE_W = "min(84vw, 320px)";
 const BRAND_TEXT_MAX = 140;
 const NAV_TEXT_MAX = 120;
 const COLLAPSED_INSET = (SIDEBAR_COLLAPSED_W - ICON_COL) / 2;
@@ -1319,6 +1322,7 @@ export default function StudylinApp() {
   const profileMenuRef = useRef<HTMLDivElement | null>(null);
   const profileBtnRef = useRef<HTMLButtonElement | null>(null);
   const mountedRef = useRef(true);
+  const historyInitRef = useRef(false);
   const [profile, setProfile] = useState<ProfileRecord>({
     name: "",
     publicId: "",
@@ -1353,6 +1357,33 @@ export default function StudylinApp() {
   useEffect(() => {
     if (!collapsed) setExpandTick((n) => n + 1);
   }, [collapsed]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const current = window.history.state as { view?: View } | null;
+    const nextState = { view };
+    if (!historyInitRef.current) {
+      window.history.replaceState(nextState, "");
+      historyInitRef.current = true;
+      return;
+    }
+    if (current?.view !== view) {
+      window.history.pushState(nextState, "");
+    }
+  }, [view]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const onPopState = (event: PopStateEvent) => {
+      const next = (event.state as { view?: View } | null)?.view;
+      if (!next || next === view) return;
+      setView(next);
+      setProfileOpen(false);
+      setMobileOpen(false);
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, [view]);
 
   useEffect(() => {
     const update = () => {
@@ -1640,7 +1671,76 @@ export default function StudylinApp() {
     refreshLeaderboard();
   }, [userId, refreshCalendar, refreshLeaderboard]);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const refresh = () => {
+      void loadProfile();
+      if (!userId) return;
+      void refreshCalendar();
+      void refreshLeaderboard();
+      void refreshRequests();
+      void refreshFriendIds();
+    };
+
+    window.addEventListener("focus", refresh);
+
+    return () => window.removeEventListener("focus", refresh);
+  }, [loadProfile, refreshCalendar, refreshFriendIds, refreshLeaderboard, refreshRequests, userId]);
+
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+
+    let listener: { remove: () => Promise<void> } | null = null;
+    void App.addListener("appStateChange", ({ isActive }) => {
+      if (!isActive) return;
+      void loadProfile();
+      if (!userId) return;
+      void refreshCalendar();
+      void refreshLeaderboard();
+      void refreshRequests();
+      void refreshFriendIds();
+    }).then((handle) => {
+      listener = handle;
+    });
+
+    return () => {
+      void listener?.remove();
+    };
+  }, [loadProfile, refreshCalendar, refreshFriendIds, refreshLeaderboard, refreshRequests, userId]);
+
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+
+    let listener: { remove: () => Promise<void> } | null = null;
+    void App.addListener("backButton", ({ canGoBack }) => {
+      if (profileOpen) {
+        setProfileOpen(false);
+        return;
+      }
+      if (isMobile && mobileOpen) {
+        setMobileOpen(false);
+        return;
+      }
+      if (canGoBack && typeof window !== "undefined" && window.history.length > 1) {
+        window.history.back();
+        return;
+      }
+      if (view !== "pomodoro" && typeof window !== "undefined" && window.history.length > 1) {
+        window.history.back();
+        return;
+      }
+      App.exitApp();
+    }).then((handle) => {
+      listener = handle;
+    });
+
+    return () => {
+      void listener?.remove();
+    };
+  }, [isMobile, mobileOpen, profileOpen, view]);
+
   const SIDEBAR_W = collapsed ? SIDEBAR_COLLAPSED_W : SIDEBAR_EXPANDED_W;
+  const MOBILE_NAV_HEIGHT = 72;
   const displayName = (profile.name || "User").trim() || "User";
   const displayInitial = (displayName[0] || "U").toUpperCase();
 
@@ -1648,6 +1748,7 @@ export default function StudylinApp() {
     return <WorkspaceLoader authReady={authReady} />;
   }
   const showSidebar = !isMobile || mobileOpen;
+  const mobileNavItems = NAV;
   const viewComponents: Record<View, React.ReactNode> = {
     ...COMPONENTS,
     pomodoro: (
@@ -1795,7 +1896,7 @@ export default function StudylinApp() {
   ];
 
   return (
-    <div className="relative z-10 flex h-full w-full">
+    <div className="relative z-10 flex h-full w-full min-h-0">
       {isMobile && mobileOpen && (
         <div
           onClick={() => setMobileOpen(false)}
@@ -1813,8 +1914,9 @@ export default function StudylinApp() {
       ══════════════════════════════════════ */}
       <aside
         style={{
+          display: isMobile ? "none" : "block",
           position: "relative",
-          width: showSidebar ? SIDEBAR_W : 0,
+          width: showSidebar ? (isMobile ? SIDEBAR_MOBILE_W : SIDEBAR_W) : 0,
           flexShrink: 0,
           transition: `width ${SIDEBAR_ANIM_MS}ms cubic-bezier(0.4,0,0.2,1)`,
           overflow: showSidebar ? "visible" : "hidden",
@@ -1893,9 +1995,24 @@ export default function StudylinApp() {
                   style={{ display: "block", fontSize: 10, color: "var(--text-3)", marginTop: 2, whiteSpace: "nowrap" }} />
               </div>
             </div>
-            {isMobile && (
+            {isMobile ? (
+              <div
+                className="flex items-center justify-center shrink-0"
+                style={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: 12,
+                  background: "linear-gradient(135deg,#6366f1 0%,#8b5cf6 100%)",
+                  boxShadow: "0 2px 14px rgba(99,102,241,0.35)",
+                }}
+                aria-hidden="true"
+              >
+                <FomoDoroIcon size={20} />
+              </div>
+            ) : (
               <LoadingButton
-                onClick={() => setMobileOpen(false)}
+                onClick={() => setCollapsed(c => !c)}
+                title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
                 style={{
                   width: 32,
                   height: 32,
@@ -1905,13 +2022,10 @@ export default function StudylinApp() {
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
+                  color: "var(--text-2)",
                 }}
-                title="Close menu"
               >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round">
-                  <line x1="6" y1="6" x2="18" y2="18" />
-                  <line x1="18" y1="6" x2="6" y2="18" />
-                </svg>
+                <ChevronIcon pointRight={collapsed} />
               </LoadingButton>
             )}
           </div>
@@ -1993,7 +2107,7 @@ export default function StudylinApp() {
             })}
           </nav>
 
-          {!collapsed && (leaderboardLoading || leaderboard.length > 0) && (
+          {!isMobile && !collapsed && (leaderboardLoading || leaderboard.length > 0) && (
             <div
               style={{
                 margin: "4px 8px 8px",
@@ -2074,7 +2188,7 @@ export default function StudylinApp() {
           MAIN
       ══════════════════════════════════════ */}
       <main
-        className="flex flex-col min-w-0"
+        className="flex flex-col min-w-0 min-h-0"
         style={{ flex: "1 1 0", overflow: "hidden" }}
         onClick={() => {
           if (isMobile && mobileOpen) setMobileOpen(false);
@@ -2095,27 +2209,23 @@ export default function StudylinApp() {
           }}
         >
           {isMobile && (
-            <LoadingButton
-              onClick={() => setMobileOpen(true)}
+            <div
               style={{
                 width: 36,
                 height: 36,
-                borderRadius: 10,
-                border: "1px solid var(--glass-border)",
-                background: "var(--glass-1)",
+                borderRadius: 12,
+                background: "linear-gradient(135deg,#6366f1 0%,#8b5cf6 100%)",
+                boxShadow: "0 2px 14px rgba(99,102,241,0.35)",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
                 marginRight: 10,
+                flexShrink: 0,
               }}
-              title="Open menu"
+              aria-hidden="true"
             >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                <line x1="4" y1="6" x2="20" y2="6" />
-                <line x1="4" y1="12" x2="20" y2="12" />
-                <line x1="4" y1="18" x2="20" y2="18" />
-              </svg>
-            </LoadingButton>
+              <FomoDoroIcon size={20} />
+            </div>
           )}
           {!isMobile && (
             <div
@@ -2231,7 +2341,7 @@ export default function StudylinApp() {
           style={{
             flex: "1 1 0",
             overflow: "hidden",
-            padding: isMobile ? "12px" : "14px 18px",
+            padding: isMobile ? `12px 10px ${MOBILE_NAV_HEIGHT + 20}px` : "14px 18px 18px",
           }}
         >
           <div
@@ -2299,6 +2409,74 @@ export default function StudylinApp() {
           </div>
         </div>
       </main>
+
+      {isMobile && (
+        <nav
+          aria-label="Primary"
+          style={{
+            position: "fixed",
+            left: 10,
+            right: 10,
+            bottom: "calc(env(safe-area-inset-bottom) + 12px)",
+            zIndex: 95,
+            display: "grid",
+            gridTemplateColumns: "repeat(6, minmax(0, 1fr))",
+            gap: 4,
+            padding: 7,
+            borderRadius: 22,
+            background: "rgba(8, 10, 18, 0.80)",
+            border: "1px solid rgba(255,255,255,0.08)",
+            boxShadow: "0 18px 44px rgba(0,0,0,0.48)",
+            backdropFilter: "blur(28px)",
+            WebkitBackdropFilter: "blur(28px)",
+          }}
+        >
+          {mobileNavItems.map((item) => {
+            const active = view === item.id;
+            return (
+              <LoadingButton
+                key={item.id}
+                onClick={() => {
+                  setView(item.id);
+                  setProfileOpen(false);
+                }}
+                className="mobile-dock-btn"
+                aria-label={item.label}
+                title={item.label}
+                style={{
+                  height: 46,
+                  borderRadius: 16,
+                  border: "1px solid transparent",
+                  background: active ? "var(--accent-dim)" : "transparent",
+                  color: active ? "var(--accent-text)" : "var(--text-2)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  boxSizing: "border-box",
+                  boxShadow: active ? "inset 0 0 0 1px var(--accent-border), 0 0 18px rgba(99,102,241,0.18)" : "none",
+                  transform: active ? "translateY(-1px)" : "translateY(0)",
+                  transition: "transform 0.18s ease, background 0.18s ease, box-shadow 0.18s ease, color 0.18s ease",
+                }}
+              >
+                <span
+                  className="mobile-dock-icon"
+                  style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  width: 24,
+                  height: 24,
+                  borderRadius: 999,
+                  background: active ? "rgba(255,255,255,0.06)" : "transparent",
+                }}
+                >
+                  {item.icon}
+                </span>
+              </LoadingButton>
+            );
+          })}
+        </nav>
+      )}
     </div>
   );
 }
