@@ -354,3 +354,67 @@ export async function saveFocusMinutes(userId: string, date: string, minutesToAd
 export async function signOutUser() {
   await supabase.auth.signOut();
 }
+
+// ─── Notes sync ──────────────────────────────────────────────────────────────
+// Requires a `notes` table:
+//   CREATE TABLE notes (
+//     id TEXT NOT NULL,
+//     user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+//     title TEXT DEFAULT '',
+//     body TEXT DEFAULT '',
+//     color TEXT DEFAULT 'default',
+//     updated_at BIGINT NOT NULL DEFAULT 0,
+//     deleted BOOLEAN DEFAULT FALSE,
+//     PRIMARY KEY (id, user_id)
+//   );
+
+export type NoteRow = {
+  id: string;
+  title: string;
+  body: string;
+  color: string;
+  updatedAt: number;
+};
+
+export async function fetchNotes(userId: string): Promise<NoteRow[]> {
+  const { data, error } = await supabase
+    .from("notes")
+    .select("id, title, body, color, updated_at")
+    .eq("user_id", userId)
+    .eq("deleted", false)
+    .order("updated_at", { ascending: false });
+  if (error) return [];
+  return (data || []).map((r: { id: string; title: string; body: string; color: string; updated_at: number }) => ({
+    id: r.id,
+    title: r.title || "",
+    body: r.body || "",
+    color: r.color || "default",
+    updatedAt: r.updated_at || 0,
+  }));
+}
+
+export async function upsertNote(
+  userId: string,
+  note: NoteRow
+): Promise<void> {
+  await supabase.from("notes").upsert(
+    {
+      id: note.id,
+      user_id: userId,
+      title: note.title,
+      body: note.body,
+      color: note.color,
+      updated_at: note.updatedAt,
+      deleted: false,
+    },
+    { onConflict: "id,user_id" }
+  );
+}
+
+export async function deleteNoteRemote(userId: string, noteId: string): Promise<void> {
+  await supabase
+    .from("notes")
+    .update({ deleted: true, updated_at: Date.now() })
+    .eq("id", noteId)
+    .eq("user_id", userId);
+}

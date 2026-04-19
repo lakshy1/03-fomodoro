@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useRef } from "react";
 import LoadingButton from "./LoadingButton";
+import { sendTaskToKanban, setPinnedTaskId, getPinnedTaskId, SHARED_TASKS_CHANGED } from "./useSharedTasks";
+import { hapticLight, hapticMedium } from "../lib/haptics";
 
 type Priority = "low" | "medium" | "high";
 
@@ -30,26 +32,36 @@ export default function TodoList() {
   const [input, setInput] = useState("");
   const [priority, setPriority] = useState<Priority>("medium");
   const [filter, setFilter] = useState<Filter>("all");
+  const [pinnedId, setPinnedId] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Load from localStorage
   useEffect(() => {
     try {
       const saved = localStorage.getItem("studylin_tasks");
       if (saved) setTasks(JSON.parse(saved));
-    } catch {
-      // ignore
-    }
+    } catch { /* ignore */ }
+    setPinnedId(getPinnedTaskId());
   }, []);
 
-  // Persist
   useEffect(() => {
     localStorage.setItem("studylin_tasks", JSON.stringify(tasks));
+    window.dispatchEvent(new CustomEvent(SHARED_TASKS_CHANGED, { detail: { type: "tasks" } }));
   }, [tasks]);
+
+  // Keep pinnedId in sync when other components change it
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent<{ type: string }>).detail;
+      if (detail?.type === "pinned") setPinnedId(getPinnedTaskId());
+    };
+    window.addEventListener(SHARED_TASKS_CHANGED, handler);
+    return () => window.removeEventListener(SHARED_TASKS_CHANGED, handler);
+  }, []);
 
   function addTask() {
     const text = input.trim();
     if (!text) return;
+    hapticLight();
     setTasks((t) => [
       { id: uid(), text, done: false, priority, createdAt: Date.now() },
       ...t,
@@ -59,15 +71,32 @@ export default function TodoList() {
   }
 
   function toggleTask(id: string) {
+    hapticLight();
     setTasks((t) => t.map((x) => (x.id === id ? { ...x, done: !x.done } : x)));
   }
 
   function deleteTask(id: string) {
     setTasks((t) => t.filter((x) => x.id !== id));
+    if (pinnedId === id) {
+      setPinnedTaskId(null);
+      setPinnedId(null);
+    }
   }
 
   function clearDone() {
     setTasks((t) => t.filter((x) => !x.done));
+  }
+
+  function handleSendToKanban(task: Task) {
+    hapticMedium();
+    sendTaskToKanban(task);
+  }
+
+  function handlePinTask(id: string) {
+    hapticLight();
+    const next = pinnedId === id ? null : id;
+    setPinnedTaskId(next);
+    setPinnedId(next);
   }
 
   const filtered = tasks.filter((t) => {
@@ -76,11 +105,14 @@ export default function TodoList() {
     return true;
   });
 
-  const doneCount = tasks.filter((t) => t.done).length;
+  const doneCount   = tasks.filter((t) => t.done).length;
   const activeCount = tasks.length - doneCount;
 
   return (
-    <div className="fade-in flex flex-col gap-5 w-full max-w-xl mx-auto py-4">
+    <div
+      className="fade-in flex flex-col gap-5 w-full h-full max-w-none"
+      style={{ minHeight: 0 }}
+    >
       {/* Stats */}
       <div className="flex items-center gap-3">
         <span
@@ -95,6 +127,14 @@ export default function TodoList() {
             style={{ background: "var(--green-dim)", color: "var(--green)", border: "1px solid var(--green-border)" }}
           >
             {doneCount} completed
+          </span>
+        )}
+        {pinnedId && tasks.find((t) => t.id === pinnedId) && (
+          <span
+            className="px-3 py-1 rounded-full text-xs font-semibold ml-auto"
+            style={{ background: "rgba(245,158,11,0.1)", color: "var(--amber)", border: "1px solid rgba(245,158,11,0.25)" }}
+          >
+            📌 Task pinned to timer
           </span>
         )}
       </div>
@@ -177,7 +217,10 @@ export default function TodoList() {
       </div>
 
       {/* Task list */}
-      <div className="flex flex-col gap-2 overflow-y-auto" style={{ maxHeight: "calc(100vh - 380px)" }}>
+      <div
+        className="flex flex-col gap-2 flex-1 overflow-y-auto"
+        style={{ minHeight: 0 }}
+      >
         {filtered.length === 0 && (
           <div
             className="flex flex-col items-center justify-center py-16 rounded-2xl"
@@ -193,8 +236,11 @@ export default function TodoList() {
           <TaskItem
             key={task.id}
             task={task}
+            pinned={pinnedId === task.id}
             onToggle={() => toggleTask(task.id)}
             onDelete={() => deleteTask(task.id)}
+            onSendToKanban={() => handleSendToKanban(task)}
+            onPin={() => handlePinTask(task.id)}
           />
         ))}
       </div>
@@ -204,27 +250,40 @@ export default function TodoList() {
 
 function TaskItem({
   task,
+  pinned,
   onToggle,
   onDelete,
+  onSendToKanban,
+  onPin,
 }: {
   task: Task;
+  pinned: boolean;
   onToggle: () => void;
   onDelete: () => void;
+  onSendToKanban: () => void;
+  onPin: () => void;
 }) {
   const meta = PRIORITY_META[task.priority];
+  const [kanbanSent, setKanbanSent] = useState(false);
+
+  function handleKanban() {
+    onSendToKanban();
+    setKanbanSent(true);
+    setTimeout(() => setKanbanSent(false), 2000);
+  }
 
   return (
     <div
       className="group flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200"
       style={{
-        background: "var(--glass-1)",
-        border: "1px solid var(--glass-border)",
+        background: pinned ? "rgba(245,158,11,0.06)" : "var(--glass-1)",
+        border: `1px solid ${pinned ? "rgba(245,158,11,0.25)" : "var(--glass-border)"}`,
         opacity: task.done ? 0.55 : 1,
       }}
     >
       {/* Priority dot */}
       <div
-        className="w-1.5 rounded-full flex-shrink-0 self-stretch"
+        className="w-1.5 rounded-full shrink-0 self-stretch"
         style={{ background: meta.dot, opacity: task.done ? 0.4 : 0.8 }}
       />
 
@@ -232,7 +291,7 @@ function TaskItem({
         type="checkbox"
         checked={task.done}
         onChange={onToggle}
-        className="flex-shrink-0"
+        className="shrink-0"
       />
 
       <span
@@ -251,6 +310,45 @@ function TaskItem({
       >
         {meta.label}
       </span>
+
+      {/* Pin to timer */}
+      {!task.done && (
+        <LoadingButton
+          onClick={onPin}
+          title={pinned ? "Unpin from timer" : "Pin to timer"}
+          className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center rounded-lg"
+          style={{
+            width: 28,
+            height: 28,
+            color: pinned ? "var(--amber)" : "var(--text-3)",
+            background: pinned ? "rgba(245,158,11,0.12)" : "transparent",
+          }}
+        >
+          <svg width="13" height="13" viewBox="0 0 24 24" fill={pinned ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="12" y1="17" x2="12" y2="22" />
+            <path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z" />
+          </svg>
+        </LoadingButton>
+      )}
+
+      {/* Send to Kanban */}
+      {!task.done && (
+        <LoadingButton
+          onClick={handleKanban}
+          title="Send to Kanban"
+          className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center rounded-lg text-xs font-semibold px-2"
+          style={{
+            height: 28,
+            color: kanbanSent ? "var(--green)" : "var(--text-3)",
+            background: kanbanSent ? "var(--green-dim)" : "transparent",
+            border: kanbanSent ? "1px solid var(--green-border)" : "1px solid transparent",
+            whiteSpace: "nowrap",
+            transition: "all 0.2s ease",
+          }}
+        >
+          {kanbanSent ? "✓ Added" : "→ Board"}
+        </LoadingButton>
+      )}
 
       <LoadingButton
         onClick={onDelete}

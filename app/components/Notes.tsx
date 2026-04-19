@@ -1,7 +1,9 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import LoadingButton from "./LoadingButton";
+import { useAppContext } from "./AppContext";
+import { fetchNotes, upsertNote, deleteNoteRemote } from "../lib/queries";
 
 interface Note {
   id: string;
@@ -38,6 +40,7 @@ function timeAgo(ts: number): string {
 }
 
 export default function Notes() {
+  const { userId } = useAppContext();
   const [notes, setNotes] = useState<Note[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
@@ -46,11 +49,16 @@ export default function Notes() {
   const [mobileView, setMobileView] = useState<"list" | "editor">("list");
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [confirmTop, setConfirmTop] = useState<number>(0);
+  const [editorDeletePending, setEditorDeletePending] = useState(false);
+  const editorDeleteTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const longPressRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const longPressTriggeredRef = useRef(false);
   const swipeStartX = useRef<number | null>(null);
   const swipeDeltaX = useRef(0);
+  const syncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Load from localStorage first, then merge with Supabase
   useEffect(() => {
     try {
       const saved = localStorage.getItem("studylin_notes");
@@ -62,9 +70,48 @@ export default function Notes() {
     } catch { /* ignore */ }
   }, []);
 
+  // Merge with Supabase once userId is available
+  const syncFromRemote = useCallback(async () => {
+    if (!userId) return;
+    try {
+      const remote = await fetchNotes(userId);
+      if (!remote.length) return;
+      setNotes((local) => {
+        const localMap = new Map(local.map((n) => [n.id, n]));
+        remote.forEach((r) => {
+          const l = localMap.get(r.id);
+          if (!l || r.updatedAt > l.updatedAt) {
+            localMap.set(r.id, { ...r });
+          }
+        });
+        const merged = Array.from(localMap.values()).sort(
+          (a, b) => b.updatedAt - a.updatedAt
+        );
+        localStorage.setItem("studylin_notes", JSON.stringify(merged));
+        return merged;
+      });
+    } catch { /* network unavailable — local data is fine */ }
+  }, [userId]);
+
+  useEffect(() => {
+    syncFromRemote();
+  }, [syncFromRemote]);
+
   useEffect(() => {
     localStorage.setItem("studylin_notes", JSON.stringify(notes));
   }, [notes]);
+
+  // Debounced sync of changed notes to Supabase (2 s after last change)
+  const scheduleSyncNote = useCallback(
+    (note: Note) => {
+      if (!userId) return;
+      if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
+      syncTimerRef.current = setTimeout(() => {
+        void upsertNote(userId, note);
+      }, 2000);
+    },
+    [userId]
+  );
 
   useEffect(() => {
     const update = () => setIsMobile(window.innerWidth <= 900);
@@ -86,6 +133,15 @@ export default function Notes() {
     };
     const onTouchEnd = () => {
       if (swipeDeltaX.current > 60 && (swipeStartX.current ?? 999) <= 24) {
+        // Drop empty note on swipe-back
+        const currentNotes = JSON.parse(localStorage.getItem("studylin_notes") || "[]") as Note[];
+        const active = currentNotes.find((n: Note) => n.id === activeId);
+        if (active && !active.title.trim() && !active.body.trim()) {
+          const remaining = currentNotes.filter((n: Note) => n.id !== activeId);
+          localStorage.setItem("studylin_notes", JSON.stringify(remaining));
+          setNotes(remaining);
+          setActiveId(remaining[0]?.id ?? null);
+        }
         setMobileView("list");
       }
       swipeStartX.current = null;
@@ -103,38 +159,69 @@ export default function Notes() {
 
   const activeNote = notes.find((n) => n.id === activeId) ?? null;
 
+  // Reset delete confirmation whenever the active note changes
+  useEffect(() => {
+    setEditorDeletePending(false);
+    if (editorDeleteTimerRef.current) clearTimeout(editorDeleteTimerRef.current);
+  }, [activeId]);
+
   function newNote() {
-    const note: Note = {
-      id: uid(),
-      title: "",
-      body: "",
-      updatedAt: Date.now(),
-      color: "default",
-    };
-    setNotes((n) => [note, ...n]);
-    setActiveId(note.id);
-    if (isMobile) setMobileView("editor");
-    setTimeout(() => bodyRef.current?.focus(), 50);
+    setNotes((prev) => {
+      const active = prev.find((n) => n.id === activeId);
+      const cleaned = (active && !active.title.trim() && !active.body.trim())
+        ? prev.filter((n) => n.id !== activeId)
+        : prev;
+      const note: Note = { id: uid(), title: "", body: "", updatedAt: Date.now(), color: "default" };
+      setActiveId(note.id);
+      setSearch("");
+      if (isMobile) setMobileView("editor");
+      setTimeout(() => bodyRef.current?.focus(), 50);
+      if (userId) scheduleSyncNote(note);
+      return [note, ...cleaned];
+    });
+  }
+
+  function selectNote(id: string) {
+    // Drop the current note if it's empty before switching
+    setNotes((prev) => {
+      const active = prev.find((n) => n.id === activeId);
+      return (active && !active.title.trim() && !active.body.trim())
+        ? prev.filter((n) => n.id !== activeId)
+        : prev;
+    });
+    setActiveId(id);
+    setEditorDeletePending(false);
+    if (editorDeleteTimerRef.current) clearTimeout(editorDeleteTimerRef.current);
   }
 
   function updateNote(id: string, patch: Partial<Note>) {
-    setNotes((n) =>
-      n.map((x) => (x.id === id ? { ...x, ...patch, updatedAt: Date.now() } : x))
-    );
+    setNotes((n) => {
+      const next = n.map((x) =>
+        x.id === id ? { ...x, ...patch, updatedAt: Date.now() } : x
+      );
+      const updated = next.find((x) => x.id === id);
+      if (updated) scheduleSyncNote(updated);
+      return next;
+    });
   }
 
   function deleteNote(id: string) {
     const remaining = notes.filter((n) => n.id !== id);
     setNotes(remaining);
     setActiveId(remaining[0]?.id ?? null);
+    setEditorDeletePending(false);
+    if (editorDeleteTimerRef.current) clearTimeout(editorDeleteTimerRef.current);
     if (isMobile && remaining.length === 0) setMobileView("list");
+    if (userId) void deleteNoteRemote(userId, id);
   }
 
-  const filtered = notes.filter(
-    (n) =>
-      n.title.toLowerCase().includes(search.toLowerCase()) ||
-      n.body.toLowerCase().includes(search.toLowerCase())
-  );
+  const filtered = notes
+    .filter(
+      (n) =>
+        n.title.toLowerCase().includes(search.toLowerCase()) ||
+        n.body.toLowerCase().includes(search.toLowerCase())
+    )
+    .sort((a, b) => b.updatedAt - a.updatedAt);
 
   const wordCount = activeNote
     ? activeNote.body.trim().split(/\s+/).filter(Boolean).length
@@ -245,26 +332,37 @@ export default function Notes() {
               <LoadingButton
                 key={note.id}
                 onClick={() => {
-                  setActiveId(note.id);
+                  // Block click if it's the tail of a long press
+                  if (longPressTriggeredRef.current) {
+                    longPressTriggeredRef.current = false;
+                    return;
+                  }
+                  selectNote(note.id);
                   if (isMobile) setMobileView("editor");
                   if (confirmDeleteId) setConfirmDeleteId(null);
                 }}
                 onTouchStart={(e) => {
                   if (!isMobile) return;
+                  longPressTriggeredRef.current = false;
                   const target = e.currentTarget;
                   longPressRef.current = setTimeout(() => {
-                    if (longPressRef.current) clearTimeout(longPressRef.current);
                     longPressRef.current = null;
+                    longPressTriggeredRef.current = true;
                     openDeleteConfirm(note.id, target);
                   }, 550);
                 }}
                 onTouchEnd={() => {
-                  if (longPressRef.current) clearTimeout(longPressRef.current);
-                  longPressRef.current = null;
+                  if (longPressRef.current) {
+                    clearTimeout(longPressRef.current);
+                    longPressRef.current = null;
+                  }
                 }}
                 onTouchCancel={() => {
-                  if (longPressRef.current) clearTimeout(longPressRef.current);
-                  longPressRef.current = null;
+                  if (longPressRef.current) {
+                    clearTimeout(longPressRef.current);
+                    longPressRef.current = null;
+                  }
+                  longPressTriggeredRef.current = false;
                 }}
                 onContextMenu={(e) => {
                   e.preventDefault();
@@ -313,7 +411,13 @@ export default function Notes() {
           >
             {isMobile && (
               <LoadingButton
-                onClick={() => setMobileView("list")}
+                onClick={() => {
+                  // Drop empty note when going back to list
+                  if (activeNote && !activeNote.title.trim() && !activeNote.body.trim()) {
+                    deleteNote(activeNote.id);
+                  }
+                  setMobileView("list");
+                }}
                 className="flex items-center justify-center rounded-lg"
                 style={{ width: 28, height: 28, color: "var(--text-2)" }}
                 title="Back"
@@ -351,18 +455,45 @@ export default function Notes() {
               ))}
             </div>
 
-            <LoadingButton
-              onClick={() => deleteNote(activeNote.id)}
-              className="flex items-center justify-center rounded-lg transition-all duration-150"
-              style={{ width: 28, height: 28, color: "var(--text-3)" }}
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <polyline points="3,6 5,6 21,6" />
-                <path d="M19,6l-1,14a2,2,0,0,1-2,2H8a2,2,0,0,1-2-2L5,6" />
-                <path d="M10,11v6" /><path d="M14,11v6" />
-                <path d="M9,6V4a1,1,0,0,1,1-1h4a1,1,0,0,1,1,1V6" />
-              </svg>
-            </LoadingButton>
+            {editorDeletePending ? (
+              <div className="flex items-center gap-1.5">
+                <LoadingButton
+                  onClick={() => deleteNote(activeNote.id)}
+                  className="px-2 py-1 rounded-lg text-[11px] font-semibold"
+                  style={{ background: "rgba(239,68,68,0.18)", color: "#f87171" }}
+                >
+                  Delete
+                </LoadingButton>
+                <LoadingButton
+                  onClick={() => {
+                    setEditorDeletePending(false);
+                    if (editorDeleteTimerRef.current) clearTimeout(editorDeleteTimerRef.current);
+                  }}
+                  className="px-2 py-1 rounded-lg text-[11px] font-semibold"
+                  style={{ background: "rgba(148,163,184,0.12)", color: "var(--text-2)" }}
+                >
+                  Cancel
+                </LoadingButton>
+              </div>
+            ) : (
+              <LoadingButton
+                onClick={() => {
+                  setEditorDeletePending(true);
+                  if (editorDeleteTimerRef.current) clearTimeout(editorDeleteTimerRef.current);
+                  editorDeleteTimerRef.current = setTimeout(() => setEditorDeletePending(false), 3000);
+                }}
+                className="flex items-center justify-center rounded-lg transition-all duration-150"
+                style={{ width: 28, height: 28, color: "var(--text-3)" }}
+                title="Delete note"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="3,6 5,6 21,6" />
+                  <path d="M19,6l-1,14a2,2,0,0,1-2,2H8a2,2,0,0,1-2-2L5,6" />
+                  <path d="M10,11v6" /><path d="M14,11v6" />
+                  <path d="M9,6V4a1,1,0,0,1,1-1h4a1,1,0,0,1,1,1V6" />
+                </svg>
+              </LoadingButton>
+            )}
           </div>
 
           {/* Body */}

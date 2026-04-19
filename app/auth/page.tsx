@@ -329,6 +329,7 @@ export default function AuthPage() {
               <LoadingButton
                 key={m}
                 onClick={() => setMode(m)}
+                disabled={loading}
                 style={{
                   flex: 1,
                   border: "none",
@@ -337,8 +338,9 @@ export default function AuthPage() {
                   background: mode === m ? "var(--accent-dim)" : "var(--glass-2)",
                   color: mode === m ? "var(--accent-text)" : "var(--text-3)",
                   fontWeight: 600,
-                  cursor: "pointer",
+                  cursor: loading ? "not-allowed" : "pointer",
                   transition: "all 0.2s ease",
+                  opacity: loading ? 0.6 : 1,
                 }}
               >
                 {m === "login" ? "Log In" : "Sign Up"}
@@ -356,6 +358,7 @@ export default function AuthPage() {
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 required
+                disabled={loading}
                 valid={name.length === 0 || name.length >= 2}
                 hint="Use at least 2 characters."
               />
@@ -366,6 +369,7 @@ export default function AuthPage() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
+              disabled={loading}
               valid={emailValid}
               hint="Enter a valid email address."
             />
@@ -376,6 +380,7 @@ export default function AuthPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
+                disabled={loading}
                 valid={passwordValid}
                 hint="At least 6 characters."
               />
@@ -384,14 +389,16 @@ export default function AuthPage() {
               <LoadingButton
                 type="button"
                 onClick={() => setMode("reset")}
+                disabled={loading}
                 style={{
                   border: "none",
                   background: "transparent",
                   color: "var(--text-3)",
                   fontSize: 12,
                   textAlign: "left",
-                  cursor: "pointer",
+                  cursor: loading ? "not-allowed" : "pointer",
                   padding: "0 2px",
+                  opacity: loading ? 0.5 : 1,
                 }}
               >
                 Forgot password?

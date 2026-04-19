@@ -16,6 +16,7 @@
     "@capacitor/app": "^8.1.0",
     "@capacitor/cli": "^8.3.0",
     "@capacitor/core": "^8.3.0",
+    "@capacitor/haptics": "^8.0.0",
     "@capacitor/local-notifications": "^8.0.2",
     "@supabase/supabase-js": "^2.56.0",
     "gsap": "^3.13.0",

@@ -50,6 +50,20 @@ create table if not exists public.friends (
 
 create index if not exists friends_user_idx on public.friends(user_id);
 
+-- NOTES
+create table if not exists public.notes (
+  id text not null,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  title text not null default '',
+  body text not null default '',
+  color text not null default 'default',
+  updated_at bigint not null default 0,
+  deleted boolean not null default false,
+  primary key (id, user_id)
+);
+
+create index if not exists notes_user_updated_idx on public.notes(user_id, updated_at desc);
+
 -- STORAGE BUCKET (avatars)
 insert into storage.buckets (id, name, public)
 values ('avatars', 'avatars', true)
@@ -77,6 +91,7 @@ alter table public.profiles enable row level security;
 alter table public.study_sessions enable row level security;
 alter table public.friend_requests enable row level security;
 alter table public.friends enable row level security;
+alter table public.notes enable row level security;
 
 -- Profiles: users can read public profiles (for friend search), and update their own
 create policy "profiles_read_public"
@@ -132,6 +147,23 @@ create policy "friends_read_own"
 create policy "friends_insert_participant"
   on public.friends for insert
   with check (auth.uid() = user_id or auth.uid() = friend_id);
+
+-- Notes: own rows only
+create policy "notes_read_own"
+  on public.notes for select
+  using (auth.uid() = user_id);
+
+create policy "notes_insert_own"
+  on public.notes for insert
+  with check (auth.uid() = user_id);
+
+create policy "notes_update_own"
+  on public.notes for update
+  using (auth.uid() = user_id);
+
+create policy "notes_delete_own"
+  on public.notes for delete
+  using (auth.uid() = user_id);
 
 -- Realtime: study_sessions changes broadcast to subscribers (leaderboard live updates)
 alter publication supabase_realtime add table public.study_sessions;

@@ -3,6 +3,8 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import ViewportHeight from "./components/ViewportHeight";
 import ToastProvider from "./components/ToastProvider";
+import { AppProvider } from "./components/AppContext";
+import OfflineBanner from "./components/OfflineBanner";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -43,7 +45,12 @@ export default function RootLayout({
       <body className="h-full overflow-hidden">
         <div className="app-shell">
           <ViewportHeight />
-          <ToastProvider>{children}</ToastProvider>
+          <AppProvider>
+            <ToastProvider>
+              <OfflineBanner />
+              {children}
+            </ToastProvider>
+          </AppProvider>
         </div>
       </body>
     </html>

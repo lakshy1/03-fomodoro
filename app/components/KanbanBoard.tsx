@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import LoadingButton from "./LoadingButton";
+import { SHARED_TASKS_CHANGED } from "./useSharedTasks";
 
 type Status = "todo" | "doing" | "done";
 
@@ -50,11 +51,25 @@ export default function KanbanBoard() {
   const [dragging, setDragging] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState<Status | null>(null);
 
-  useEffect(() => {
+  function loadCards() {
     try {
       const saved = localStorage.getItem("studylin_kanban");
       if (saved) setCards(JSON.parse(saved));
     } catch { /* ignore */ }
+  }
+
+  useEffect(() => {
+    loadCards();
+  }, []);
+
+  // Reload cards when TodoList sends a task to Kanban
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent<{ type: string }>).detail;
+      if (detail?.type === "kanban") loadCards();
+    };
+    window.addEventListener(SHARED_TASKS_CHANGED, handler);
+    return () => window.removeEventListener(SHARED_TASKS_CHANGED, handler);
   }, []);
 
   useEffect(() => {
@@ -130,7 +145,12 @@ export default function KanbanBoard() {
                 border: `1px solid ${isOver ? col.border : "var(--glass-border)"}`,
               }}
               onDragOver={(e) => { e.preventDefault(); setDragOver(col.id); }}
-              onDragLeave={() => setDragOver(null)}
+              onDragLeave={(e) => {
+                // Only clear when the cursor truly leaves the column —
+                // not when it moves over a child element inside the column.
+                if (e.currentTarget.contains(e.relatedTarget as Node)) return;
+                setDragOver(null);
+              }}
               onDrop={() => onDrop(col.id)}
             >
               {/* Column header */}
@@ -170,8 +190,12 @@ export default function KanbanBoard() {
                 {/* Empty drop zone hint */}
                 {colCards.length === 0 && dragOver !== col.id && (
                   <div
-                    className="flex items-center justify-center rounded-xl py-8 text-xs"
-                    style={{ color: "var(--text-3)", border: `1px dashed var(--glass-border)` }}
+                    className="flex items-center justify-center rounded-xl py-4 text-[11px]"
+                    style={{
+                      color: "var(--text-3)",
+                      border: `1px dashed var(--glass-border)`,
+                      minHeight: 56,
+                    }}
                   >
                     Drop here
                   </div>
@@ -189,7 +213,7 @@ export default function KanbanBoard() {
                       onChange={(e) => setInputs((i) => ({ ...i, [col.id]: e.target.value }))}
                       onKeyDown={(e) => {
                         if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); addCard(col.id); }
-                        if (e.key === "Escape") setAdding(null);
+                        if (e.key === "Escape") { setAdding(null); setInputs((i) => ({ ...i, [col.id]: "" })); }
                       }}
                       placeholder="Task description…"
                       rows={2}
@@ -205,7 +229,7 @@ export default function KanbanBoard() {
                         Add
                       </LoadingButton>
                       <LoadingButton
-                        onClick={() => setAdding(null)}
+                        onClick={() => { setAdding(null); setInputs((i) => ({ ...i, [col.id]: "" })); }}
                         className="px-3 py-1.5 rounded-lg text-xs"
                         style={{ background: "var(--glass-1)", color: "var(--text-2)", border: "1px solid var(--glass-border)" }}
                       >
@@ -252,6 +276,24 @@ function KanbanCard({
   currentStatus: Status;
 }) {
   const otherStatuses = (["todo", "doing", "done"] as Status[]).filter((s) => s !== currentStatus);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const confirmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // On touch devices group-hover never fires, so always show the action row.
+  const [isTouchDevice, setIsTouchDevice] = useState(false);
+  useEffect(() => {
+    setIsTouchDevice(window.matchMedia("(hover: none)").matches);
+  }, []);
+
+  function requestDelete() {
+    setConfirmDelete(true);
+    if (confirmTimerRef.current) clearTimeout(confirmTimerRef.current);
+    confirmTimerRef.current = setTimeout(() => setConfirmDelete(false), 3000);
+  }
+
+  function cancelDelete() {
+    setConfirmDelete(false);
+    if (confirmTimerRef.current) clearTimeout(confirmTimerRef.current);
+  }
 
   return (
     <div
@@ -268,29 +310,55 @@ function KanbanCard({
       <p className="text-xs leading-relaxed" style={{ color: "var(--text-1)" }}>
         {card.text}
       </p>
-      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-        {otherStatuses.map((s) => {
-          const col = COLUMNS.find((c) => c.id === s)!;
-          return (
+
+      {/* Action row — always visible on touch, hover-revealed on pointer devices */}
+      <div
+        className={isTouchDevice ? "flex items-center gap-1" : "flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity"}
+      >
+        {confirmDelete ? (
+          <>
             <LoadingButton
-              key={s}
-              onClick={() => onMove(s)}
-              className="px-2 py-0.5 rounded-md text-xs font-medium transition-all duration-150"
-              style={{ background: col.bg, color: col.color, border: `1px solid ${col.border}` }}
+              onClick={() => { onDelete(); cancelDelete(); }}
+              className="px-2 py-0.5 rounded-md text-xs font-semibold"
+              style={{ background: "rgba(239,68,68,0.18)", color: "#f87171" }}
             >
-              → {col.label}
+              Delete?
             </LoadingButton>
-          );
-        })}
-        <LoadingButton
-          onClick={onDelete}
-          className="ml-auto flex items-center justify-center rounded-md"
-          style={{ width: 22, height: 22, color: "var(--text-3)" }}
-        >
-          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-          </svg>
-        </LoadingButton>
+            <LoadingButton
+              onClick={cancelDelete}
+              className="px-2 py-0.5 rounded-md text-xs"
+              style={{ background: "var(--glass-1)", color: "var(--text-2)", border: "1px solid var(--glass-border)" }}
+            >
+              Cancel
+            </LoadingButton>
+          </>
+        ) : (
+          <>
+            {otherStatuses.map((s) => {
+              const col = COLUMNS.find((c) => c.id === s)!;
+              return (
+                <LoadingButton
+                  key={s}
+                  onClick={() => onMove(s)}
+                  className="px-2 py-0.5 rounded-md text-xs font-medium transition-all duration-150"
+                  style={{ background: col.bg, color: col.color, border: `1px solid ${col.border}` }}
+                >
+                  → {col.label}
+                </LoadingButton>
+              );
+            })}
+            <LoadingButton
+              onClick={requestDelete}
+              className="ml-auto flex items-center justify-center rounded-md"
+              style={{ width: 22, height: 22, color: "var(--text-3)" }}
+              title="Delete card"
+            >
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
+            </LoadingButton>
+          </>
+        )}
       </div>
     </div>
   );

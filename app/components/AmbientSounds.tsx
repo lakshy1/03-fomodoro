@@ -1,302 +1,65 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect } from "react";
 
 interface Sound {
   id: string;
   name: string;
   emoji: string;
   description: string;
-  generate: (ctx: AudioContext) => AudioNode;
-}
-
-/** Build a looping white-noise buffer source */
-function noiseSource(ctx: AudioContext, seconds = 8): AudioBufferSourceNode {
-  const buf = ctx.createBuffer(1, ctx.sampleRate * seconds, ctx.sampleRate);
-  const data = buf.getChannelData(0);
-  for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
-  const src = ctx.createBufferSource();
-  src.buffer = buf;
-  src.loop = true;
-  return src;
-}
-
-/** Brown noise: integrate white noise (very low-frequency rumble) */
-function brownNoise(ctx: AudioContext): AudioBufferSourceNode {
-  const buf = ctx.createBuffer(1, ctx.sampleRate * 8, ctx.sampleRate);
-  const data = buf.getChannelData(0);
-  let last = 0;
-  for (let i = 0; i < data.length; i++) {
-    const white = Math.random() * 2 - 1;
-    last = (last + 0.02 * white) / 1.02;
-    data[i] = last * 3.5;
-  }
-  const src = ctx.createBufferSource();
-  src.buffer = buf;
-  src.loop = true;
-  return src;
-}
-
-/** Pink noise: equal energy per octave */
-function pinkNoise(ctx: AudioContext): AudioBufferSourceNode {
-  const buf = ctx.createBuffer(1, ctx.sampleRate * 8, ctx.sampleRate);
-  const data = buf.getChannelData(0);
-  let b0 = 0, b1 = 0, b2 = 0, b3 = 0, b4 = 0, b5 = 0, b6 = 0;
-  for (let i = 0; i < data.length; i++) {
-    const white = Math.random() * 2 - 1;
-    b0 = 0.99886 * b0 + white * 0.0555179;
-    b1 = 0.99332 * b1 + white * 0.0750759;
-    b2 = 0.96900 * b2 + white * 0.1538520;
-    b3 = 0.86650 * b3 + white * 0.3104856;
-    b4 = 0.55000 * b4 + white * 0.5329522;
-    b5 = -0.7616 * b5 - white * 0.0168980;
-    data[i] = b0 + b1 + b2 + b3 + b4 + b5 + b6 + white * 0.5362;
-    data[i] *= 0.11;
-    b6 = white * 0.115926;
-  }
-  const src = ctx.createBufferSource();
-  src.buffer = buf;
-  src.loop = true;
-  return src;
+  file: string;
 }
 
 const SOUNDS: Sound[] = [
-  {
-    id: "rain",
-    name: "Rain",
-    emoji: "🌧",
-    description: "Soft rainfall",
-    generate(ctx) {
-      const src = noiseSource(ctx);
-      const lp = ctx.createBiquadFilter();
-      lp.type = "lowpass";
-      lp.frequency.value = 380;
-      lp.Q.value = 0.4;
-      const gain = ctx.createGain();
-      gain.gain.value = 0.55;
-      src.connect(lp);
-      lp.connect(gain);
-      src.start();
-      return gain;
-    },
-  },
-  {
-    id: "cafe",
-    name: "Café",
-    emoji: "☕",
-    description: "Warm room tone",
-    generate(ctx) {
-      const src = pinkNoise(ctx);
-      const bp = ctx.createBiquadFilter();
-      bp.type = "bandpass";
-      bp.frequency.value = 900;
-      bp.Q.value = 0.3;
-      const gain = ctx.createGain();
-      gain.gain.value = 0.18;
-      src.connect(bp);
-      bp.connect(gain);
-      src.start();
-      return gain;
-    },
-  },
-  {
-    id: "fire",
-    name: "Fireplace",
-    emoji: "🔥",
-    description: "Soft crackle",
-    generate(ctx) {
-      const src = noiseSource(ctx);
-      const bp = ctx.createBiquadFilter();
-      bp.type = "bandpass";
-      bp.frequency.value = 1400;
-      bp.Q.value = 1.4;
-      const gain = ctx.createGain();
-      gain.gain.value = 0.12;
-      src.connect(bp);
-      bp.connect(gain);
-      src.start();
-      return gain;
-    },
-  },
-  {
-    id: "pink",
-    name: "Pink noise",
-    emoji: "🩷",
-    description: "Balanced hush",
-    generate(ctx) {
-      const src = pinkNoise(ctx);
-      const lp = ctx.createBiquadFilter();
-      lp.type = "lowpass";
-      lp.frequency.value = 1200;
-      const gain = ctx.createGain();
-      gain.gain.value = 0.35;
-      src.connect(lp);
-      lp.connect(gain);
-      src.start();
-      return gain;
-    },
-  },
-  {
-    id: "night",
-    name: "Night",
-    emoji: "🌙",
-    description: "Crickets & air",
-    generate(ctx) {
-      const src = noiseSource(ctx);
-      const hp = ctx.createBiquadFilter();
-      hp.type = "highpass";
-      hp.frequency.value = 1800;
-      const gain = ctx.createGain();
-      gain.gain.value = 0.18;
-      src.connect(hp);
-      hp.connect(gain);
-      src.start();
-      return gain;
-    },
-  },
-  {
-    id: "ocean",
-    name: "Ocean",
-    emoji: "🌊",
-    description: "Rolling waves",
-    generate(ctx) {
-      const src = noiseSource(ctx);
-      const lp = ctx.createBiquadFilter();
-      lp.type = "lowpass";
-      lp.frequency.value = 600;
-      lp.Q.value = 0.6;
-      const gain = ctx.createGain();
-      gain.gain.value = 0;
-      // Slow wave modulation ~0.12 Hz
-      const lfo = ctx.createOscillator();
-      lfo.type = "sine";
-      lfo.frequency.value = 0.12;
-      const lfoGain = ctx.createGain();
-      lfoGain.gain.value = 0.28;
-      lfo.connect(lfoGain);
-      lfoGain.connect(gain.gain);
-      gain.gain.value = 0.3;
-      lfo.start();
-      src.connect(lp);
-      lp.connect(gain);
-      src.start();
-      return gain;
-    },
-  },
-  {
-    id: "forest",
-    name: "Forest",
-    emoji: "🌿",
-    description: "Birds & breeze",
-    generate(ctx) {
-      const src = noiseSource(ctx);
-      const bp = ctx.createBiquadFilter();
-      bp.type = "bandpass";
-      bp.frequency.value = 1200;
-      bp.Q.value = 0.5;
-      const hp = ctx.createBiquadFilter();
-      hp.type = "highpass";
-      hp.frequency.value = 200;
-      const gain = ctx.createGain();
-      gain.gain.value = 0.22;
-      src.connect(hp);
-      hp.connect(bp);
-      bp.connect(gain);
-      src.start();
-      return gain;
-    },
-  },
-  {
-    id: "wind",
-    name: "Wind",
-    emoji: "💨",
-    description: "Gentle wind",
-    generate(ctx) {
-      const src = brownNoise(ctx);
-      const lp = ctx.createBiquadFilter();
-      lp.type = "lowpass";
-      lp.frequency.value = 250;
-      lp.Q.value = 1.2;
-      const gain = ctx.createGain();
-      gain.gain.value = 0.6;
-      // Slow amplitude swell
-      const lfo = ctx.createOscillator();
-      lfo.type = "sine";
-      lfo.frequency.value = 0.06;
-      const lfoGain = ctx.createGain();
-      lfoGain.gain.value = 0.2;
-      lfo.connect(lfoGain);
-      lfoGain.connect(gain.gain);
-      lfo.start();
-      src.connect(lp);
-      lp.connect(gain);
-      src.start();
-      return gain;
-    },
-  },
-  {
-    id: "vinyl",
-    name: "Lo-fi",
-    emoji: "🎵",
-    description: "Vinyl static",
-    generate(ctx) {
-      const src = noiseSource(ctx);
-      // Vinyl has a specific crackle character
-      const lp = ctx.createBiquadFilter();
-      lp.type = "lowpass";
-      lp.frequency.value = 3500;
-      const hp = ctx.createBiquadFilter();
-      hp.type = "highpass";
-      hp.frequency.value = 1000;
-      const gain = ctx.createGain();
-      gain.gain.value = 0.08;
-      src.connect(lp);
-      lp.connect(hp);
-      hp.connect(gain);
-      src.start();
-      return gain;
-    },
-  },
-  {
-    id: "space",
-    name: "Deep focus",
-    emoji: "🔮",
-    description: "40 Hz binaural",
-    generate(ctx) {
-      // Binaural-ish: left 200 Hz, right 240 Hz — creates 40 Hz beat in brain
-      const osc1 = ctx.createOscillator();
-      osc1.type = "sine";
-      osc1.frequency.value = 200;
-      const osc2 = ctx.createOscillator();
-      osc2.type = "sine";
-      osc2.frequency.value = 240;
-      const gain = ctx.createGain();
-      gain.gain.value = 0.08;
-      const merger = ctx.createChannelMerger(2);
-      osc1.connect(merger, 0, 0);
-      osc2.connect(merger, 0, 1);
-      merger.connect(gain);
-      osc1.start();
-      osc2.start();
-      return gain;
-    },
-  },
+  { id: "rain",       name: "Rain",       emoji: "🌧", description: "Relaxing natural rainfall",           file: "/dragon-studio-relaxing-rain-444802.mp3" },
+  { id: "binaural",   name: "Binaural",   emoji: "🧠", description: "Delta binaural beats for deep focus", file: "/freesound_community-binaural-beats_delta_440_440-5hz-48565.mp3" },
+  { id: "deep-focus", name: "Deep Focus", emoji: "🎯", description: "Cinematic deep work flow",             file: "/lilliben-ambient-background-for-deep-work-364890.mp3" },
+  { id: "ambient",    name: "Ambient",    emoji: "🌌", description: "Soft atmospheric soundscape",         file: "/quietphase-ambient-deep-489704.mp3" },
+  { id: "lofi",       name: "Lo-fi",      emoji: "🎵", description: "Calm lo-fi ambient",                  file: "/quietphase-deep-ambient-489703.mp3" },
+  { id: "lounge",     name: "Lounge",     emoji: "☕", description: "Warm instrumental lounge",            file: "/quietphase-deep-instrumental-496353.mp3" },
 ];
 
 interface ActiveSound {
-  node: AudioNode;
+  audio: HTMLAudioElement;
+  source: MediaElementAudioSourceNode;
   gainNode: GainNode;
+}
+
+// Animated equalizer bars
+function EqBars({ active, barCount = 12, height = 36 }: { active: boolean; barCount?: number; height?: number }) {
+  const peaks = [55, 80, 45, 95, 60, 85, 40, 75, 65, 90, 50, 70];
+  return (
+    <div style={{ display: "flex", alignItems: "flex-end", gap: 3, height }}>
+      {Array.from({ length: barCount }).map((_, i) => (
+        <div
+          key={i}
+          style={{
+            width: 3,
+            borderRadius: 2,
+            background: active ? "var(--accent)" : "var(--text-3)",
+            opacity: active ? 0.8 : 0.18,
+            height: active ? `${Math.max(4, peaks[i % peaks.length] * (height / 100))}px` : 4,
+            animationName: active ? `ambientEq${i % 4}` : "none",
+            animationDuration: active ? `${0.65 + (i % 5) * 0.12}s` : undefined,
+            animationTimingFunction: active ? "ease-in-out" : undefined,
+            animationIterationCount: active ? "infinite" : undefined,
+            animationDirection: active ? "alternate" : undefined,
+            animationDelay: `${i * 0.055}s`,
+            transition: "opacity 0.4s ease, height 0.5s ease",
+          }}
+        />
+      ))}
+    </div>
+  );
 }
 
 export default function AmbientSounds() {
   const ctxRef = useRef<AudioContext | null>(null);
   const activeSoundsRef = useRef<Map<string, ActiveSound>>(new Map());
   const [playing, setPlaying] = useState<Set<string>>(new Set());
-  const [volumes, setVolumes] = useState<Record<string, number>>(() =>
-    Object.fromEntries(SOUNDS.map((s) => [s.id, 0.7]))
-  );
   const [masterVolume, setMasterVolume] = useState(0.8);
   const masterGainRef = useRef<GainNode | null>(null);
+  const [playbackError, setPlaybackError] = useState<string | null>(null);
 
   function getCtx() {
     if (!ctxRef.current) {
@@ -308,180 +71,237 @@ export default function AmbientSounds() {
     return ctxRef.current;
   }
 
-  function toggleSound(sound: Sound) {
-    const ctx = getCtx();
-    if (ctx.state === "suspended") ctx.resume();
-
-    if (playing.has(sound.id)) {
-      // Stop
-      const active = activeSoundsRef.current.get(sound.id);
-      if (active) {
-        active.gainNode.gain.setTargetAtTime(0, ctx.currentTime, 0.3);
-        setTimeout(() => {
-          try { active.gainNode.disconnect(); } catch { /* ignore */ }
-        }, 600);
+  function stopSound(id: string, fadeMs = 600) {
+    const ctx = ctxRef.current;
+    const active = activeSoundsRef.current.get(id);
+    if (!active || !ctx) return;
+    active.gainNode.gain.setTargetAtTime(0, ctx.currentTime, 0.3);
+    setTimeout(() => {
+      try {
+        active.audio.pause();
+        active.audio.src = "";
+        active.audio.load();
+        active.source.disconnect();
+        active.gainNode.disconnect();
+      } catch {
+        /* ignore */
       }
-      activeSoundsRef.current.delete(sound.id);
-      setPlaying((p) => {
-        const next = new Set(p);
-        next.delete(sound.id);
-        return next;
-      });
-    } else {
-      // Stop any other sound (single-play mode)
-      activeSoundsRef.current.forEach((active, id) => {
-        active.gainNode.gain.setTargetAtTime(0, ctx.currentTime, 0.25);
-        setTimeout(() => {
-          try { active.gainNode.disconnect(); } catch { /* ignore */ }
-        }, 500);
-        activeSoundsRef.current.delete(id);
-      });
-      setPlaying(new Set());
-
-      // Play
-      const outputNode = sound.generate(ctx);
-      const gainNode = ctx.createGain();
-      const targetVol = Number.isFinite(volumes[sound.id]) ? volumes[sound.id] : 0.7;
-      gainNode.gain.value = 0;
-      gainNode.gain.setTargetAtTime(targetVol, ctx.currentTime, 0.5);
-      outputNode.connect(gainNode);
-      gainNode.connect(masterGainRef.current!);
-      activeSoundsRef.current.set(sound.id, { node: outputNode, gainNode });
-      setPlaying((p) => new Set([...p, sound.id]));
-    }
+    }, fadeMs);
+    activeSoundsRef.current.delete(id);
   }
 
-  function setVolume(id: string, vol: number) {
-    setVolumes((v) => ({ ...v, [id]: vol }));
-    const active = activeSoundsRef.current.get(id);
-    if (active && ctxRef.current) {
-      active.gainNode.gain.setTargetAtTime(vol, ctxRef.current.currentTime, 0.05);
+  async function toggleSound(sound: Sound) {
+    const ctx = getCtx();
+    if (ctx.state === "suspended") void ctx.resume().catch(() => {});
+    setPlaybackError(null);
+
+    if (playing.has(sound.id)) {
+      stopSound(sound.id);
+      setPlaying((p) => { const next = new Set(p); next.delete(sound.id); return next; });
+    } else {
+      // Stop current (single-play mode)
+      activeSoundsRef.current.forEach((_, id) => stopSound(id, 500));
+      activeSoundsRef.current.clear();
+      setPlaying(new Set());
+
+      const audio = new Audio(sound.file);
+      audio.loop = true;
+      audio.crossOrigin = "anonymous";
+      audio.preload = "auto";
+
+      const source = ctx.createMediaElementSource(audio);
+      const gainNode = ctx.createGain();
+      gainNode.gain.value = 1;
+      source.connect(gainNode);
+      gainNode.connect(masterGainRef.current!);
+      activeSoundsRef.current.set(sound.id, { audio, source, gainNode });
+      try {
+        await audio.play();
+        setPlaying(new Set([sound.id]));
+      } catch {
+        try {
+          audio.pause();
+          source.disconnect();
+          gainNode.disconnect();
+        } catch {
+          /* ignore */
+        }
+        activeSoundsRef.current.delete(sound.id);
+        setPlaybackError("Playback was blocked by the browser.");
+      }
     }
   }
 
   function setMaster(vol: number) {
     setMasterVolume(vol);
-    if (masterGainRef.current) {
-      masterGainRef.current.gain.value = vol;
-    }
+    if (masterGainRef.current) masterGainRef.current.gain.value = vol;
   }
 
-  // Cleanup on unmount
   useEffect(() => {
     return () => {
+      activeSoundsRef.current.forEach((active) => {
+        try { active.audio.pause(); active.gainNode.disconnect(); } catch { /* ignore */ }
+      });
       ctxRef.current?.close();
     };
   }, []);
 
+  const activeId = [...playing][0] ?? null;
+  const activeSound = activeId ? SOUNDS.find((s) => s.id === activeId) ?? null : null;
+
   return (
-    <div className="fade-in flex flex-col gap-6 w-full max-w-none mx-auto py-4">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-sm" style={{ color: "var(--text-2)" }}>
-            Layer sounds to create your perfect study environment.
-          </p>
-        </div>
-        <span
-          className="text-xs font-medium"
-          style={{ color: "var(--text-3)" }}
+    <>
+      <style>{`
+        @keyframes ambientEq0 { from { height: 4px } to { height: 22px } }
+        @keyframes ambientEq1 { from { height: 6px } to { height: 28px } }
+        @keyframes ambientEq2 { from { height: 8px } to { height: 18px } }
+        @keyframes ambientEq3 { from { height: 5px } to { height: 24px } }
+        .ambient-card { transition: transform 0.15s ease, box-shadow 0.2s ease; }
+        .ambient-card:hover { transform: translateY(-2px); }
+        .ambient-card:active { transform: scale(0.97); }
+      `}</style>
+
+      <div className="fade-in flex flex-col gap-5 w-full max-w-none mx-auto py-4">
+
+        {/* ── Now Playing Hero ── */}
+        <div
+          style={{
+            background: activeSound
+              ? "linear-gradient(135deg, var(--accent-dim) 0%, var(--glass-1) 100%)"
+              : "var(--glass-1)",
+            border: `1px solid ${activeSound ? "var(--accent-border)" : "var(--glass-border)"}`,
+            borderRadius: 22,
+            padding: "20px 20px 18px",
+            display: "flex",
+            flexDirection: "column",
+            gap: 16,
+            boxShadow: activeSound ? "0 0 48px var(--accent-glow)" : "none",
+            transition: "background 0.4s ease, border-color 0.4s ease, box-shadow 0.4s ease",
+          }}
         >
-          Tap a sound to play
-        </span>
-      </div>
-
-      {/* Master volume */}
-      <div
-        className="flex items-center gap-4 px-5 py-4 rounded-2xl"
-        style={{ background: "var(--glass-1)", border: "1px solid var(--glass-border)" }}
-      >
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: "var(--text-2)", flexShrink: 0 }}>
-          <polygon points="11,5 6,9 2,9 2,15 6,15 11,19" />
-          <path d="M19.07,4.93a10,10,0,0,1,0,14.14" />
-          <path d="M15.54,8.46a5,5,0,0,1,0,7.07" />
-        </svg>
-        <input
-          type="range"
-          min={0}
-          max={1}
-          step={0.01}
-          value={masterVolume}
-          onChange={(e) => setMaster(parseFloat(e.target.value))}
-          className="flex-1 h-1 rounded-full appearance-none cursor-pointer"
-          style={{ accentColor: "var(--accent)" }}
-        />
-        <span className="text-xs w-8 text-right" style={{ color: "var(--text-2)" }}>
-          {Math.round(masterVolume * 100)}%
-        </span>
-      </div>
-
-      {/* Sound grid */}
-      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3">
-        {SOUNDS.map((sound) => {
-          const isOn = playing.has(sound.id);
-          return (
+          {/* Top row */}
+          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
             <div
-              key={sound.id}
-              className="flex flex-col gap-3 p-4 rounded-2xl transition-all duration-200 cursor-pointer relative"
               style={{
-                background: isOn ? "var(--accent-dim)" : "var(--glass-1)",
-                border: `1px solid ${isOn ? "var(--accent-border)" : "var(--glass-border)"}`,
-                boxShadow: isOn ? "0 0 24px var(--accent-glow)" : "none",
+                width: 52, height: 52, borderRadius: 14, flexShrink: 0,
+                background: activeSound ? "var(--accent-dim)" : "var(--glass-2)",
+                border: `1px solid ${activeSound ? "var(--accent-border)" : "var(--glass-border)"}`,
+                display: "flex", alignItems: "center", justifyContent: "center",
+                fontSize: 26,
+                transition: "all 0.3s ease",
               }}
-              onClick={() => toggleSound(sound)}
             >
-              {isOn && (
-                <span
-                  className="ambient-pulse"
-                  style={{
-                    position: "absolute",
-                    inset: -2,
-                    borderRadius: 18,
-                    border: "1px solid rgba(99,102,241,0.35)",
-                    pointerEvents: "none",
-                  }}
-                />
-              )}
-              <div className="flex items-start justify-between">
-                <span style={{ fontSize: 28 }}>{sound.emoji}</span>
-                {/* Toggle pill removed */}
-              </div>
-
-              <div>
-                <p className="text-sm font-semibold" style={{ color: isOn ? "var(--text-1)" : "var(--text-1)" }}>
-                  {sound.name}
-                </p>
-                <p className="text-xs mt-0.5" style={{ color: "var(--text-3)" }}>
-                  {sound.description}
-                </p>
-              </div>
-
-              {/* Per-sound volume (only when playing) */}
-              {isOn && (
-                <div
-                  className="flex items-center gap-2"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <input
-                    type="range"
-                    min={0}
-                    max={1}
-                    step={0.01}
-                    value={volumes[sound.id]}
-                    onChange={(e) => setVolume(sound.id, parseFloat(e.target.value))}
-                    className="flex-1 h-0.5 rounded-full appearance-none cursor-pointer"
-                    style={{ accentColor: "var(--accent)" }}
-                  />
-                </div>
-              )}
+              {activeSound ? activeSound.emoji : "🎧"}
             </div>
-          );
-        })}
-      </div>
 
-      <p className="text-center text-xs" style={{ color: "var(--text-3)" }}>
-        All sounds are generated in-browser — no downloads needed.
-      </p>
-    </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{
+                fontSize: 10, fontWeight: 700, letterSpacing: "0.12em",
+                textTransform: "uppercase",
+                color: activeSound ? "var(--accent)" : "var(--text-3)",
+                marginBottom: 3,
+                transition: "color 0.3s ease",
+              }}>
+                {activeSound ? "NOW PLAYING" : "PLAYER READY"}
+              </div>
+              <div style={{ fontSize: 17, fontWeight: 700, color: "var(--text-1)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                {activeSound ? activeSound.name : "No track selected"}
+              </div>
+              <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 2 }}>
+                {activeSound ? activeSound.description : "Tap a sound below to begin"}
+              </div>
+            </div>
+
+            <EqBars active={!!activeSound} barCount={10} height={38} />
+          </div>
+
+          {/* Volume controls */}
+          {activeSound && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }} onClick={(e) => e.stopPropagation()}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: "var(--text-2)", flexShrink: 0 }}>
+                  <polygon points="11,5 6,9 2,9 2,15 6,15 11,19" />
+                  <path d="M19.07,4.93a10,10,0,0,1,0,14.14" />
+                  <path d="M15.54,8.46a5,5,0,0,1,0,7.07" />
+                </svg>
+                <input
+                  type="range" min={0} max={1} step={0.01}
+                  value={masterVolume}
+                  onChange={(e) => setMaster(parseFloat(e.target.value))}
+                  style={{ flex: 1, accentColor: "var(--accent)", cursor: "pointer", height: 3 }}
+                />
+                <span style={{ fontSize: 10, color: "var(--text-2)", width: 26, textAlign: "right" }}>
+                  {Math.round(masterVolume * 100)}%
+                </span>
+              </div>
+            </div>
+          )}
+          {!activeSound && playbackError && (
+            <div style={{ fontSize: 11, color: "var(--text-3)" }}>
+              {playbackError}
+            </div>
+          )}
+        </div>
+
+        {/* ── Sound Grid ── */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+          {SOUNDS.map((sound) => {
+            const isOn = playing.has(sound.id);
+            return (
+              <div
+                key={sound.id}
+                className="ambient-card flex flex-col gap-3 p-4 rounded-2xl cursor-pointer relative"
+                style={{
+                  background: isOn ? "var(--accent-dim)" : "var(--glass-1)",
+                  border: `1px solid ${isOn ? "var(--accent-border)" : "var(--glass-border)"}`,
+                  boxShadow: isOn ? "0 0 20px var(--accent-glow)" : "none",
+                }}
+                onClick={() => toggleSound(sound)}
+              >
+                {isOn && (
+                  <span
+                    className="ambient-pulse"
+                    style={{
+                      position: "absolute", inset: -2, borderRadius: 18,
+                      border: "1px solid rgba(99,102,241,0.3)", pointerEvents: "none",
+                    }}
+                  />
+                )}
+
+                {/* Emoji + mini eq bars */}
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                  <span style={{ fontSize: 24 }}>{sound.emoji}</span>
+              <div style={{ display: "flex", alignItems: "flex-end", gap: 2, height: 18 }}>
+                {[55, 85, 45, 95, 65].map((h, i) => (
+                  <div
+                    key={i}
+                    style={{
+                        width: 2, borderRadius: 1,
+                        background: isOn ? "var(--accent)" : "var(--text-3)",
+                        opacity: isOn ? 0.75 : 0.2,
+                        height: isOn ? `${Math.max(3, h * 0.18)}px` : 3,
+                        animationName: isOn ? `ambientEq${i % 4}` : "none",
+                        animationDuration: isOn ? `${0.6 + i * 0.1}s` : undefined,
+                        animationTimingFunction: isOn ? "ease-in-out" : undefined,
+                        animationIterationCount: isOn ? "infinite" : undefined,
+                        animationDirection: isOn ? "alternate" : undefined,
+                        animationDelay: `${i * 0.07}s`,
+                        transition: "height 0.4s ease, opacity 0.4s ease",
+                      }}
+                    />
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <p style={{ fontSize: 13, fontWeight: 600, color: "var(--text-1)", margin: 0 }}>{sound.name}</p>
+                  <p style={{ fontSize: 10, color: "var(--text-3)", margin: "2px 0 0", lineHeight: 1.4 }}>{sound.description}</p>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </>
   );
 }

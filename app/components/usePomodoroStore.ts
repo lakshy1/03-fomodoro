@@ -4,12 +4,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 type Mode = "focus" | "short" | "long";
 
-// IST date helpers — anchored to Asia/Kolkata (UTC+5:30) so the day resets at 12:00 AM IST.
-const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
-const toISTDate = (utcMs: number): string => {
-  const ist = new Date(utcMs + IST_OFFSET_MS);
-  return ist.toISOString().slice(0, 10); // "YYYY-MM-DD"
-};
+// IST date helpers — uses Intl.DateTimeFormat (not a fixed offset) so DST-adjacent
+// edge cases are handled correctly regardless of system locale or timezone.
+const IST_FMT = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" });
+const toISTDate = (utcMs: number): string => IST_FMT.format(utcMs);
 const todayIST = () => toISTDate(Date.now());
 
 export type PomodoroSettings = {
@@ -378,6 +376,8 @@ export function usePomodoroStore(initialSettings?: Partial<PomodoroSettings>) {
     }
   }, [handleCommand]);
 
+  const clearLastComplete = useCallback(() => setLastComplete(null), []);
+
   return {
     state,
     setMode,
@@ -388,6 +388,6 @@ export function usePomodoroStore(initialSettings?: Partial<PomodoroSettings>) {
     skip,
     updateSettings,
     lastComplete,
-    clearLastComplete: () => setLastComplete(null),
+    clearLastComplete,
   };
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback, type InputHTMLAttributes } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { App } from "@capacitor/app";
@@ -21,6 +21,12 @@ import {
 import { supabase } from "../lib/supabaseClient";
 import LoadingButton from "./LoadingButton";
 import { useToast } from "./ToastProvider";
+import { useAppContext } from "./AppContext";
+import ProfilePanel from "./panels/ProfilePanel";
+import CalendarPanel from "./panels/CalendarPanel";
+import { RequestsPanel, AddFriendPanel } from "./panels/FriendPanels";
+import { LeaderboardPanel, LeaderboardMini } from "./panels/LeaderboardPanel";
+import type { DayDatum, FriendRequest, LeaderboardEntry, LeaderboardRange, ProfileRecord } from "./panels/shared";
 
 const PomodoroTimer = dynamic(() => import("./PomodoroTimer"), { ssr: false });
 const TodoList      = dynamic(() => import("./TodoList"),      { ssr: false });
@@ -32,29 +38,7 @@ const KanbanBoard   = dynamic(() => import("./KanbanBoard"),   { ssr: false });
 const LOADER_R = 44;
 const LOADER_CIRC = 2 * Math.PI * LOADER_R;
 
-function WorkspaceLoader({ authReady }: { authReady: boolean }) {
-  const [tick, setTick] = useState(0);
-  const [dots, setDots] = useState(".");
-
-  useEffect(() => {
-    const id = setInterval(() => setTick((t) => t + 1), 1000);
-    return () => clearInterval(id);
-  }, []);
-
-  // Animate "..." after countdown finishes
-  useEffect(() => {
-    if (tick < 3) return;
-    const id = setInterval(() => setDots((d) => d.length >= 3 ? "." : d + "."), 400);
-    return () => clearInterval(id);
-  }, [tick]);
-
-  const counting = tick < 3; // still in 3→2→1 phase
-  const remaining = counting ? 3 - tick : 0; // 3, 2, 1
-
-  // Ring: drains fully over 3s during countdown, then spins during loading
-  const countProgress = Math.min(tick / 3, 1);
-  const dashOffset = counting ? LOADER_CIRC * (1 - countProgress) : 0; // full arc when loading
-
+function WorkspaceLoader() {
   return (
     <div
       style={{
@@ -68,84 +52,32 @@ function WorkspaceLoader({ authReady }: { authReady: boolean }) {
           "radial-gradient(1200px 600px at 20% 0%, var(--mesh-a), transparent), radial-gradient(800px 400px at 80% 20%, var(--mesh-b), transparent), var(--bg-base)",
       }}
     >
-      {/* Ring + center content */}
       <div style={{ position: "relative", width: 140, height: 140 }}>
         <svg width="140" height="140" viewBox="0 0 140 140" style={{ overflow: "visible" }}>
-          {/* Glow backdrop */}
           <circle cx="70" cy="70" r={LOADER_R + 6} fill="var(--accent-dim)" />
-          {/* Track */}
           <circle cx="70" cy="70" r={LOADER_R} fill="none" stroke="var(--glass-border)" strokeWidth="5" />
-          {/* Arc — drains during countdown, spins during loading */}
           <circle
             cx="70" cy="70" r={LOADER_R}
-            fill="none"
-            stroke="var(--accent)"
-            strokeWidth="5"
-            strokeLinecap="round"
-            strokeDasharray={LOADER_CIRC}
-            strokeDashoffset={dashOffset}
+            fill="none" stroke="var(--accent)" strokeWidth="5" strokeLinecap="round"
+            strokeDasharray={LOADER_CIRC} strokeDashoffset={0}
             className="ring-progress"
             style={{
-              transition: counting ? "stroke-dashoffset 0.9s cubic-bezier(0.16,1,0.3,1)" : "none",
               filter: "drop-shadow(0 0 10px var(--accent-glow))",
-              animation: !counting && !authReady ? "ld-spin 1.2s linear infinite" : "none",
+              animation: "ld-spin 1.2s linear infinite",
             }}
           />
         </svg>
-
-        {/* Center: big number during countdown, spinner dot during loading */}
         <div
-          key={counting ? remaining : "loading"}
           className="fade-in"
-          style={{
-            position: "absolute", inset: 0,
-            display: "flex", alignItems: "center", justifyContent: "center",
-          }}
+          style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}
         >
-          {counting ? (
-            <span
-              style={{
-                fontFamily: "var(--font-mono), monospace",
-                fontSize: 56,
-                fontWeight: 800,
-                color: "var(--text-1)",
-                letterSpacing: "-3px",
-                lineHeight: 1,
-              }}
-            >
-              {remaining}
-            </span>
-          ) : (
-            <span
-              style={{
-                fontSize: 11,
-                fontWeight: 600,
-                color: "var(--accent-text)",
-                letterSpacing: "0.12em",
-                textTransform: "uppercase",
-              }}
-            >
-              Loading
-            </span>
-          )}
+          <span style={{ fontSize: 11, fontWeight: 600, color: "var(--accent-text)", letterSpacing: "0.12em", textTransform: "uppercase" }}>
+            Loading
+          </span>
         </div>
       </div>
-
-      {/* Message */}
-      <p
-        style={{
-          fontSize: 13,
-          fontWeight: 500,
-          color: "var(--text-2)",
-          letterSpacing: "0.03em",
-          margin: 0,
-          minWidth: "10ch",
-          textAlign: "center",
-        }}
-      >
-        {counting
-          ? ["Get ready…", "Almost there…", "Preparing…"][3 - remaining - 1] ?? "Get ready…"
-          : `Loading${dots}`}
+      <p style={{ fontSize: 13, fontWeight: 500, color: "var(--text-2)", letterSpacing: "0.03em", margin: 0 }}>
+        Setting up your workspace…
       </p>
     </div>
   );
@@ -155,65 +87,30 @@ type Tab   = "pomodoro" | "tasks" | "sounds" | "notes" | "kanban";
 type Theme = "dark" | "light";
 type View  = Tab | "leaderboard" | "profile" | "calendar" | "requests" | "add-friend";
 
-type ProfileRecord = {
-  name: string;
-  publicId: string;
-  avatarUrl: string | null;
-  dailyGoal: number;
-  focusMinutes: number;
-  shortBreakMinutes: number;
-  longBreakMinutes: number;
-};
 
-type DayDatum = { date: string; minutes: number };
-type LeaderboardEntry = { name: string; days: DayDatum[]; total: number };
-type FriendRequest = {
-  id: string;
-  direction: "incoming" | "outgoing";
-  name: string;
-  publicId: string;
-  createdAt: string;
-};
-type LeaderboardRange = "last7" | "month";
-
-// All dates are anchored to IST (Asia/Kolkata, UTC+5:30) so the day resets at 12:00 AM IST.
-const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000; // +05:30 in milliseconds
-const toISTDate = (utcMs: number): string => {
-  const ist = new Date(utcMs + IST_OFFSET_MS);
-  return ist.toISOString().slice(0, 10); // "YYYY-MM-DD" in IST
-};
+// All dates are anchored to IST (Asia/Kolkata). Using Intl.DateTimeFormat avoids
+// manual offset arithmetic and handles DST-adjacent edge cases correctly.
+const IST_FMT = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" });
+// en-CA locale reliably formats as YYYY-MM-DD — no parsing needed.
+const toISTDate = (utcMs: number): string => IST_FMT.format(utcMs);
 const todayIST = () => toISTDate(Date.now());
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-const buildLastNDays = (n: number) =>
-  Array.from({ length: n }, (_, i) =>
-    toISTDate(Date.now() - (n - 1 - i) * DAY_MS)
-  );
-const buildMonthDays = (year: number, month: number) => {
-  // Build month days by iterating IST day boundaries
+const buildLastNDays = (n: number): string[] =>
+  Array.from({ length: n }, (_, i) => toISTDate(Date.now() - (n - 1 - i) * DAY_MS));
+
+const buildMonthDays = (year: number, month: number): string[] => {
+  // Iterate candidate days 1–31, sampling at 06:00 UTC (= 11:30 IST) to avoid
+  // any midnight edge case, and stop when we leave the target month.
   const days: string[] = [];
-  // Start at 00:00 IST on the 1st of the given month
-  const startIST = new Date(Date.UTC(year, month, 1) - IST_OFFSET_MS); // UTC time that equals midnight IST on 1st
-  const d = new Date(startIST);
-  while (true) {
-    const label = toISTDate(d.getTime() + IST_OFFSET_MS);
+  for (let day = 1; day <= 31; day++) {
+    const d = new Date(Date.UTC(year, month, day, 6, 0, 0));
+    const label = IST_FMT.format(d);
     const [y, m] = label.split("-").map(Number);
     if (y !== year || m - 1 !== month) break;
     days.push(label);
-    d.setUTCDate(d.getUTCDate() + 1);
   }
   return days;
-};
-const monthLabel = (iso: string) => {
-  const d = new Date(iso + "T00:00:00");
-  return d.toLocaleString("en-US", { month: "short" }) + " '" + String(d.getFullYear()).slice(2);
-};
-const rangeLabel = (iso: string) => iso.slice(5);
-const formatMinutes = (min: number) => {
-  if (min < 60) return `${min} m`;
-  const h = Math.floor(min / 60);
-  const m = min % 60;
-  return m ? `${h} h ${m} m` : `${h} h`;
 };
 
 /* ── Typewriter text — types in on mount, re-mounts on key flip ─ */
@@ -315,25 +212,83 @@ const SIDEBAR_MOBILE_W = "min(84vw, 320px)";
 const BRAND_TEXT_MAX = 140;
 const NAV_TEXT_MAX = 120;
 const COLLAPSED_INSET = (SIDEBAR_COLLAPSED_W - ICON_COL) / 2;
-const ACTIVE_GLOW_INSET = 6;
-const SKELETON_BG = "linear-gradient(90deg, rgba(255,255,255,0.06), rgba(255,255,255,0.14), rgba(255,255,255,0.06))";
 const typeMs = (text: string) =>
   Math.max(18, Math.round(TYPE_TOTAL_MS / Math.max(1, text.length)));
 
-/* ── FomoDoro logo icon ──────────────────────────────────────── */
+/* ── FomoDoro brand video ────────────────────────────────────── */
 function FomoDoroIcon({ size = 20 }: { size?: number }) {
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const [replayTick, setReplayTick] = useState(0);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    try {
+      video.pause();
+      video.currentTime = 0;
+      const playPromise = video.play();
+      if (playPromise) void playPromise.catch(() => {});
+    } catch {
+      /* ignore */
+    }
+  }, [replayTick]);
+
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-      <path d="M10.5 5.2C9.8 3.2 6.8 3.0 7.8 5.8C9.0 5.0 10.5 5.2 10.5 5.2Z" fill="white" opacity="0.9"/>
-      <path d="M13.5 5.2C14.2 3.2 17.2 3.0 16.2 5.8C15.0 5.0 13.5 5.2 13.5 5.2Z" fill="white" opacity="0.9"/>
-      <line x1="12" y1="4.5" x2="12" y2="7.2" stroke="white" strokeWidth="1.4" strokeLinecap="round" opacity="0.95"/>
-      <circle cx="12" cy="15" r="7.8" fill="white" opacity="0.12"/>
-      <circle cx="12" cy="15" r="7.8" stroke="white" strokeWidth="1.4" opacity="0.90"/>
-      <line x1="12" y1="8.2" x2="12" y2="9.8" stroke="white" strokeWidth="1.4" strokeLinecap="round" opacity="0.55"/>
-      <line x1="12" y1="15" x2="8.4" y2="11.2" stroke="white" strokeWidth="1.8" strokeLinecap="round"/>
-      <line x1="12" y1="15" x2="15.6" y2="13.5" stroke="white" strokeWidth="1.8" strokeLinecap="round"/>
-      <circle cx="12" cy="15" r="1.3" fill="white"/>
-    </svg>
+    <div
+      aria-hidden="true"
+      onPointerEnter={() => setReplayTick((n) => n + 1)}
+      onPointerDown={() => setReplayTick((n) => n + 1)}
+      style={{
+        width: size,
+        height: size,
+        position: "relative",
+        overflow: "hidden",
+        borderRadius: Math.max(8, Math.round(size * 0.22)),
+        background: "#070812",
+        cursor: "pointer",
+        touchAction: "manipulation",
+      }}
+    >
+      <video
+        ref={videoRef}
+        src="/Timer.mp4"
+        autoPlay
+        muted
+        loop={false}
+        playsInline
+        preload="auto"
+        tabIndex={-1}
+        onEnded={() => {
+          const video = videoRef.current;
+          if (!video) return;
+          try {
+            video.pause();
+          } catch {
+            /* ignore */
+          }
+        }}
+        style={{
+          position: "absolute",
+          inset: 0,
+          width: "100%",
+          height: "100%",
+          display: "block",
+          objectFit: "cover",
+          objectPosition: "center center",
+          transform: "scale(1.12)",
+          transformOrigin: "center center",
+          filter: "saturate(1.08) contrast(1.04)",
+        }}
+      />
+      <div
+        style={{
+          position: "absolute",
+          inset: 0,
+          boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.08)",
+          pointerEvents: "none",
+        }}
+      />
+    </div>
   );
 }
 
@@ -455,833 +410,6 @@ function ThemePill({ theme, onSet }: { theme: Theme; onSet: (t: Theme) => void }
   );
 }
 
-function InlineEdit({
-  value,
-  onChange,
-  label,
-  inputMode,
-  maxLength,
-}: {
-  value: string;
-  onChange: (v: string) => void;
-  label: string;
-  inputMode?: InputHTMLAttributes<HTMLInputElement>["inputMode"];
-  maxLength?: number;
-}) {
-  const [editing, setEditing] = useState(false);
-  return (
-    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-      {editing ? (
-        <input
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          onBlur={() => setEditing(false)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") setEditing(false);
-          }}
-          inputMode={inputMode}
-          maxLength={maxLength}
-          style={{
-            background: "var(--glass-1)",
-            border: "1px solid var(--glass-border)",
-            borderRadius: 8,
-            padding: "6px 8px",
-            color: "var(--text-1)",
-            fontSize: 14,
-            outline: "none",
-            width: "100%",
-          }}
-          aria-label={label}
-        />
-      ) : (
-        <span style={{ fontSize: 15, fontWeight: 600, color: "var(--text-1)" }}>{value}</span>
-      )}
-      <LoadingButton
-        onClick={() => setEditing((e) => !e)}
-        style={{
-          border: "none",
-          background: "var(--glass-2)",
-          color: "var(--text-2)",
-          padding: "6px 8px",
-          borderRadius: 8,
-          cursor: "pointer",
-          fontSize: 11,
-          fontWeight: 600,
-        }}
-      >
-        {editing ? "Done" : "Edit"}
-      </LoadingButton>
-    </div>
-  );
-}
-
-function SkeletonRow({ height = 12, width = "100%" }: { height?: number; width?: number | string }) {
-  return (
-    <div
-      style={{
-        height,
-        width,
-        borderRadius: 8,
-        background: SKELETON_BG,
-        backgroundSize: "200% 100%",
-        animation: "skeleton 1.2s ease-in-out infinite",
-      }}
-    />
-  );
-}
-
-function SkeletonCard({ lines = 3 }: { lines?: number }) {
-  return (
-    <div
-      style={{
-        background: "var(--glass-1)",
-        border: "1px solid var(--glass-border)",
-        borderRadius: 18,
-        padding: 18,
-        display: "flex",
-        flexDirection: "column",
-        gap: 10,
-      }}
-    >
-      {Array.from({ length: lines }).map((_, i) => (
-        <SkeletonRow key={i} height={12} width={i === 0 ? "60%" : "100%"} />
-      ))}
-    </div>
-  );
-}
-
-function MyProfilePanel({
-  profile,
-  onProfileChange,
-  onAvatarPick,
-  loading,
-  stats,
-}: {
-  profile: ProfileRecord;
-  onProfileChange: (next: ProfileRecord) => void;
-  onAvatarPick: (file: File) => void;
-  loading: boolean;
-  stats: { total: number; streak: number; bestDay: string };
-}) {
-  const fileRef = useRef<HTMLInputElement | null>(null);
-  if (loading) {
-    return (
-      <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-        <SkeletonCard lines={4} />
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 12 }}>
-          {Array.from({ length: 3 }).map((_, i) => (
-            <SkeletonCard key={i} lines={2} />
-          ))}
-        </div>
-      </div>
-    );
-  }
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-      <div
-        style={{
-          display: "flex",
-          gap: 18,
-          alignItems: "center",
-          background: "var(--glass-1)",
-          border: "1px solid var(--glass-border)",
-          borderRadius: 18,
-          padding: 18,
-        }}
-      >
-        <LoadingButton
-          onClick={() => fileRef.current?.click()}
-          style={{
-            width: 96,
-            height: 96,
-            borderRadius: "50%",
-            border: "none",
-            padding: 0,
-            cursor: "pointer",
-            overflow: "hidden",
-            background: "linear-gradient(135deg,#6366f1,#8b5cf6)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-          title="Tap to change image"
-        >
-          {profile.avatarUrl ? (
-            <img
-              src={profile.avatarUrl}
-              alt="Profile"
-              style={{ width: "100%", height: "100%", objectFit: "cover" }}
-            />
-          ) : (
-            <span style={{ color: "white", fontSize: 28, fontWeight: 700 }}>
-              {profile.name.slice(0, 1).toUpperCase()}
-            </span>
-          )}
-        </LoadingButton>
-        <input
-          ref={fileRef}
-          type="file"
-          accept="image/*"
-          style={{ display: "none" }}
-          onChange={(e) => {
-            const file = e.target.files?.[0];
-            if (file) onAvatarPick(file);
-          }}
-        />
-        <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 8 }}>
-          <InlineEdit
-            value={profile.name}
-            label="Name"
-            onChange={(v) => onProfileChange({ ...profile, name: v })}
-          />
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <span style={{ fontSize: 12, color: "var(--text-3)" }}>ID</span>
-            <span style={{ fontSize: 14, fontWeight: 700, color: "var(--text-1)" }}>{profile.publicId}</span>
-          </div>
-        </div>
-      </div>
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
-          gap: 12,
-        }}
-      >
-        {[
-          { label: "Total Focus", value: formatMinutes(stats.total) },
-          { label: "Longest Streak", value: `${stats.streak} days` },
-          { label: "Best Day", value: stats.bestDay ? stats.bestDay : "—" },
-        ].map((card) => (
-          <div
-            key={card.label}
-            style={{
-              background: "var(--glass-1)",
-              border: "1px solid var(--glass-border)",
-              borderRadius: 14,
-              padding: 12,
-            }}
-          >
-            <div style={{ fontSize: 11, color: "var(--text-3)" }}>{card.label}</div>
-            <div style={{ fontSize: 16, fontWeight: 700, color: "var(--text-1)", marginTop: 6 }}>
-              {card.value}
-            </div>
-          </div>
-        ))}
-      </div>
-      <div
-        style={{
-          background: "var(--glass-1)",
-          border: "1px solid var(--glass-border)",
-          borderRadius: 18,
-          padding: 16,
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
-          gap: 12,
-        }}
-      >
-        {[
-          {
-            label: "Daily goal",
-            value: profile.dailyGoal,
-            min: 1,
-            max: 99,
-            key: "dailyGoal",
-          },
-          {
-            label: "Focus minutes",
-            value: profile.focusMinutes,
-            min: 5,
-            max: 180,
-            key: "focusMinutes",
-          },
-          {
-            label: "Short break",
-            value: profile.shortBreakMinutes,
-            min: 1,
-            max: 60,
-            key: "shortBreakMinutes",
-          },
-          {
-            label: "Long break",
-            value: profile.longBreakMinutes,
-            min: 5,
-            max: 120,
-            key: "longBreakMinutes",
-          },
-        ].map((item) => (
-          <div
-            key={item.key}
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: 6,
-              background: "var(--glass-2)",
-              border: "1px solid var(--glass-border)",
-              borderRadius: 12,
-              padding: 12,
-            }}
-          >
-            <span style={{ fontSize: 11, color: "var(--text-3)" }}>{item.label}</span>
-            <input
-              type="number"
-              min={item.min}
-              max={item.max}
-              value={item.value}
-              onChange={(e) => {
-                const next = Math.max(item.min, Math.min(item.max, Number(e.target.value || 0)));
-                onProfileChange({ ...profile, [item.key]: next } as ProfileRecord);
-              }}
-              style={{
-                background: "var(--glass-1)",
-                border: "1px solid var(--glass-border)",
-                borderRadius: 8,
-                padding: "6px 8px",
-                color: "var(--text-1)",
-                fontSize: 14,
-                outline: "none",
-                width: "100%",
-              }}
-            />
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function CalendarPanel({
-  last7,
-  history,
-  loading,
-}: {
-  last7: DayDatum[];
-  history: DayDatum[];
-  loading: boolean;
-}) {
-  if (loading) {
-    return (
-      <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-        <SkeletonCard lines={4} />
-        <SkeletonCard lines={4} />
-      </div>
-    );
-  }
-  const max = Math.max(30, ...last7.map((d) => d.minutes));
-  const total = last7.reduce((a, b) => a + b.minutes, 0);
-  const levels = [0, 30, 60, 120, 240];
-  const colorFor = (m: number) => {
-    if (m === 0) return "var(--glass-2)";
-    if (m < 30) return "rgba(99,102,241,0.35)";
-    if (m < 60) return "rgba(99,102,241,0.55)";
-    if (m < 120) return "rgba(99,102,241,0.75)";
-    return "rgba(99,102,241,0.95)";
-  };
-  const weeks = Array.from({ length: Math.ceil(history.length / 7) }, (_, w) => history.slice(w * 7, w * 7 + 7));
-  const monthLabels = weeks.map((week) => {
-    const labelDate = week.find((d) => d.date.endsWith("-01"))?.date;
-    return labelDate ? monthLabel(labelDate) : "";
-  });
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-      <div
-        style={{
-          background: "var(--glass-1)",
-          border: "1px solid var(--glass-border)",
-          borderRadius: 18,
-          padding: 18,
-          scrollSnapAlign: "start",
-        }}
-      >
-        <div style={{ fontSize: 12, color: "var(--text-3)" }}>Last 7 days</div>
-        <div style={{ display: "flex", gap: 10, marginTop: 14, alignItems: "flex-end" }}>
-          {last7.map((d) => (
-            <div key={d.date} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
-              <div
-                style={{
-                  width: "100%",
-                  height: 90,
-                  borderRadius: 10,
-                  background: "var(--glass-2)",
-                  display: "flex",
-                  alignItems: "flex-end",
-                  overflow: "hidden",
-                }}
-              >
-                <div
-                  style={{
-                    width: "100%",
-                    height: `${Math.max(8, Math.round((d.minutes / max) * 90))}px`,
-                    background: "linear-gradient(180deg, rgba(99,102,241,0.95), rgba(99,102,241,0.35))",
-                  }}
-                />
-              </div>
-              <span style={{ fontSize: 10, color: "var(--text-3)" }}>{d.date.slice(5)}</span>
-              <span style={{ fontSize: 11, color: "var(--text-1)", fontWeight: 600 }}>{formatMinutes(d.minutes)}</span>
-            </div>
-          ))}
-        </div>
-        {total === 0 && (
-          <div style={{ marginTop: 12, fontSize: 11, color: "var(--text-3)" }}>
-            No data yet. Start a focus session to populate this chart.
-          </div>
-        )}
-      </div>
-
-      <div
-        style={{
-          background: "var(--glass-1)",
-          border: "1px solid var(--glass-border)",
-          borderRadius: 18,
-          padding: 18,
-          scrollSnapAlign: "start",
-        }}
-      >
-        <div style={{ fontSize: 12, color: "var(--text-3)" }}>Contribution history</div>
-        <div style={{ display: "flex", gap: 6, marginTop: 12 }}>
-          {weeks.map((week, i) => (
-            <div key={i} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              {week.map((d) => (
-                <div
-                  key={d.date}
-                  title={`${d.date} — ${formatMinutes(d.minutes)}`}
-                  style={{
-                    width: 16,
-                    height: 16,
-                    borderRadius: 4,
-                    background: colorFor(d.minutes),
-                  }}
-                />
-              ))}
-            </div>
-          ))}
-        </div>
-        <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
-          {monthLabels.map((m, i) => (
-            <div key={i} style={{ width: 16, position: "relative", height: 12 }}>
-              {m && (
-                <span
-                  style={{
-                    position: "absolute",
-                    left: 0,
-                    top: 0,
-                    transform: "translateX(-6px)",
-                    fontSize: 9,
-                    color: "var(--text-3)",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  {m}
-                </span>
-              )}
-            </div>
-          ))}
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 12, fontSize: 11, color: "var(--text-3)" }}>
-          <span>Less</span>
-          {levels.map((l) => (
-            <span
-              key={l}
-              style={{ width: 12, height: 12, borderRadius: 3, background: colorFor(l), display: "inline-block" }}
-            />
-          ))}
-          <span>More</span>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function RequestsPanel({
-  requests,
-  loading,
-  onAccept,
-  onDecline,
-}: {
-  requests: FriendRequest[];
-  loading: boolean;
-  onAccept: (id: string) => Promise<void> | void;
-  onDecline: (id: string) => Promise<void> | void;
-}) {
-  const [busyIds, setBusyIds] = useState<string[]>([]);
-  if (loading) {
-    return (
-      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        {Array.from({ length: 3 }).map((_, i) => (
-          <SkeletonCard key={i} lines={2} />
-        ))}
-      </div>
-    );
-  }
-  if (!requests.length) {
-    return (
-      <div
-        style={{
-          background: "var(--glass-1)",
-          border: "1px solid var(--glass-border)",
-          borderRadius: 18,
-          padding: 20,
-          color: "var(--text-3)",
-        }}
-      >
-        No pending friend requests yet.
-      </div>
-    );
-  }
-  return (
-    <div
-      style={{
-        background: "var(--glass-1)",
-        border: "1px solid var(--glass-border)",
-        borderRadius: 18,
-        padding: 20,
-        color: "var(--text-2)",
-        display: "flex",
-        flexDirection: "column",
-        gap: 12,
-      }}
-    >
-      {requests.map((req) => (
-        <div
-          key={req.id}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            padding: "10px 12px",
-            borderRadius: 12,
-            background: "var(--glass-2)",
-            border: "1px solid var(--glass-border)",
-          }}
-        >
-          <div style={{ display: "flex", flexDirection: "column" }}>
-            <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text-1)" }}>{req.name}</span>
-            <span style={{ fontSize: 11, color: "var(--text-3)" }}>{req.publicId}</span>
-          </div>
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            {req.direction === "incoming" ? (
-              <>
-                {(() => {
-                  const isBusy = busyIds.includes(req.id);
-                  return (
-                    <>
-                <LoadingButton
-                  compact
-                  loading={isBusy}
-                  onClick={async () => {
-                    setBusyIds((s) => [...s, req.id]);
-                    await onDecline(req.id);
-                    setBusyIds((s) => s.filter((id) => id !== req.id));
-                  }}
-                  style={{
-                    width: 28,
-                    height: 28,
-                    borderRadius: 8,
-                    border: "none",
-                    background: "rgba(239,68,68,0.15)",
-                    color: "#ef4444",
-                    cursor: "pointer",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    padding: 0,
-                    overflow: "hidden",
-                  }}
-                  title="Decline"
-                >
-                  {isBusy ? "" : "✕"}
-                </LoadingButton>
-                <LoadingButton
-                  compact
-                  loading={isBusy}
-                  onClick={async () => {
-                    setBusyIds((s) => [...s, req.id]);
-                    await onAccept(req.id);
-                    setBusyIds((s) => s.filter((id) => id !== req.id));
-                  }}
-                  style={{
-                    width: 28,
-                    height: 28,
-                    borderRadius: 8,
-                    border: "none",
-                    background: "rgba(34,197,94,0.15)",
-                    color: "#22c55e",
-                    cursor: "pointer",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    padding: 0,
-                    overflow: "hidden",
-                  }}
-                  title="Accept"
-                >
-                  {isBusy ? "" : "✓"}
-                </LoadingButton>
-                    </>
-                  );
-                })()}
-              </>
-            ) : (
-              <span style={{ fontSize: 11, color: "var(--text-3)" }}>Pending</span>
-            )}
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function AddFriendPanel({ onSend }: { onSend: (code: string) => Promise<void> | void }) {
-  const [code, setCode] = useState("");
-  const [sending, setSending] = useState(false);
-  return (
-    <div
-      style={{
-        background: "var(--glass-1)",
-        border: "1px solid var(--glass-border)",
-        borderRadius: 18,
-        padding: 20,
-        color: "var(--text-2)",
-        display: "flex",
-        flexDirection: "column",
-        gap: 12,
-      }}
-    >
-      <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text-1)" }}>Add a friend</div>
-      <input
-        placeholder="Enter friend code"
-        value={code}
-        onChange={(e) => setCode(e.target.value.toUpperCase())}
-        style={{
-          background: "var(--glass-2)",
-          border: "1px solid var(--glass-border)",
-          borderRadius: 10,
-          padding: "10px 12px",
-          color: "var(--text-1)",
-          outline: "none",
-        }}
-      />
-      <LoadingButton
-        loading={sending}
-        onClick={async () => {
-          if (!code.trim()) return;
-          setSending(true);
-          await onSend(code);
-          setCode("");
-          setSending(false);
-        }}
-        style={{
-          border: "none",
-          borderRadius: 10,
-          background: "var(--accent)",
-          color: "white",
-          padding: "10px 12px",
-          fontWeight: 600,
-          cursor: "pointer",
-          width: "fit-content",
-        }}
-      >
-        Send Request
-      </LoadingButton>
-    </div>
-  );
-}
-
-function LeaderboardMini({ rows, loading }: { rows: LeaderboardEntry[]; loading: boolean }) {
-  if (loading) {
-    return (
-      <div style={{ padding: "8px 12px 12px" }}>
-        <SkeletonRow height={10} width="40%" />
-        <div style={{ marginTop: 10 }}>
-          <SkeletonRow height={8} width="100%" />
-          <div style={{ height: 8 }} />
-          <SkeletonRow height={8} width="100%" />
-        </div>
-      </div>
-    );
-  }
-  if (!rows.length) return null;
-  const max = Math.max(1, ...rows.map((r) => r.total));
-  const colorFor = (m: number) => {
-    if (m === 0) return "var(--glass-2)";
-    if (m < 30) return "rgba(99,102,241,0.35)";
-    if (m < 60) return "rgba(99,102,241,0.55)";
-    if (m < 120) return "rgba(99,102,241,0.75)";
-    return "rgba(99,102,241,0.95)";
-  };
-  return (
-    <div style={{ padding: "8px 12px 12px" }}>
-      <div style={{ fontSize: 11, color: "var(--text-3)", marginBottom: 8 }}>Leaderboard</div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        {rows.map((row) => (
-          <div key={row.name} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <div style={{ width: 10, height: 10, borderRadius: "50%", background: "var(--accent)" }} />
-            <div style={{ flex: 1 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: "var(--text-1)" }}>
-                <span>{row.name}</span>
-                <span style={{ color: "var(--text-3)" }}>{formatMinutes(row.total)}</span>
-              </div>
-              <div style={{ height: 4, borderRadius: 999, background: "var(--glass-2)", marginTop: 4, overflow: "hidden" }}>
-                <div
-                  style={{
-                    height: "100%",
-                    width: `${Math.min(100, Math.round((row.total / max) * 100))}%`,
-                    background: "linear-gradient(90deg, rgba(99,102,241,0.75), rgba(99,102,241,0.2))",
-                  }}
-                />
-              </div>
-              <div style={{ display: "flex", gap: 4, marginTop: 6 }}>
-                {row.days.map((d) => (
-                  <span
-                    key={d.date}
-                    title={`${d.date} — ${formatMinutes(d.minutes)}`}
-                    style={{
-                      width: 8,
-                      height: 8,
-                      borderRadius: 2,
-                      background: colorFor(d.minutes),
-                      display: "inline-block",
-                    }}
-                  />
-                ))}
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function LeaderboardPanel({
-  rows,
-  loading,
-  range,
-  onRangeChange,
-  onRefresh,
-}: {
-  rows: LeaderboardEntry[];
-  loading: boolean;
-  range: LeaderboardRange;
-  onRangeChange: (r: LeaderboardRange) => void;
-  onRefresh: () => void;
-}) {
-  if (loading) {
-    return (
-      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        <SkeletonCard lines={3} />
-        <SkeletonCard lines={3} />
-      </div>
-    );
-  }
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-        <div
-          style={{
-            display: "flex",
-            gap: 8,
-            background: "var(--glass-1)",
-            border: "1px solid var(--glass-border)",
-            borderRadius: 999,
-            padding: 4,
-            width: "fit-content",
-            scrollSnapAlign: "start",
-          }}
-        >
-          {[
-            { key: "last7", label: "Last 7 days" },
-            { key: "month", label: "This month" },
-          ].map((opt) => (
-            <LoadingButton
-              key={opt.key}
-              onClick={() => onRangeChange(opt.key as LeaderboardRange)}
-              style={{
-                border: "none",
-                padding: "6px 12px",
-                borderRadius: 999,
-                background: range === opt.key ? "var(--accent-dim)" : "transparent",
-                color: range === opt.key ? "var(--accent-text)" : "var(--text-3)",
-                cursor: "pointer",
-                fontSize: 12,
-                fontWeight: 600,
-              }}
-            >
-              {opt.label}
-            </LoadingButton>
-          ))}
-        </div>
-        <LoadingButton
-          onClick={onRefresh}
-          loading={loading}
-          style={{
-            border: "1px solid var(--glass-border)",
-            borderRadius: 999,
-            background: "var(--glass-1)",
-            color: "var(--text-2)",
-            padding: "6px 12px",
-            fontSize: 12,
-            fontWeight: 600,
-            cursor: "pointer",
-          }}
-          title="Refresh leaderboard"
-        >
-          Refresh
-        </LoadingButton>
-      </div>
-      <div
-        style={{
-          background: "var(--glass-1)",
-          border: "1px solid var(--glass-border)",
-          borderRadius: 18,
-          padding: 16,
-          display: "flex",
-          flexDirection: "column",
-          gap: 12,
-          scrollSnapAlign: "start",
-        }}
-      >
-        {rows.map((row, idx) => (
-          <div key={row.name} style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <div style={{ width: 26, textAlign: "center", fontWeight: 700, color: "var(--text-1)" }}>
-              #{idx + 1}
-            </div>
-            <div style={{ flex: 1 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: "var(--text-1)" }}>
-                <span>{row.name}</span>
-                <span style={{ color: "var(--text-3)" }}>{formatMinutes(row.total)}</span>
-              </div>
-              <div style={{ height: 6, borderRadius: 999, background: "var(--glass-2)", marginTop: 6, overflow: "hidden" }}>
-                <div
-                  style={{
-                    height: "100%",
-                    width: `${Math.min(100, Math.round((row.total / Math.max(1, rows[0]?.total || 1)) * 100))}%`,
-                    background: "linear-gradient(90deg, rgba(99,102,241,0.8), rgba(99,102,241,0.25))",
-                  }}
-                />
-              </div>
-              <div style={{ display: "flex", gap: 4, marginTop: 8 }}>
-                {row.days.map((d) => (
-                  <span
-                    key={d.date}
-                    title={`${d.date} — ${formatMinutes(d.minutes)}`}
-                    style={{
-                      width: 10,
-                      height: 10,
-                      borderRadius: 3,
-                      background: d.minutes === 0 ? "var(--glass-2)" : "rgba(99,102,241,0.6)",
-                      display: "inline-block",
-                    }}
-                  />
-                ))}
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 /* ── Kept-alive component map ────────────────────────────────── */
 const COMPONENTS: Record<Tab, React.ReactNode> = {
   pomodoro: <PomodoroTimer />,
@@ -1296,6 +424,7 @@ const COMPONENTS: Record<Tab, React.ReactNode> = {
 export default function StudylinApp() {
   const router = useRouter();
   const { push } = useToast();
+  const { setUserId: setCtxUserId, setProfile: setCtxProfile, setTodayFocusMinutes: setCtxTodayFocusMinutes } = useAppContext();
   const [view,         setView]        = useState<View>("pomodoro");
   const [theme,        setTheme]       = useState<Theme>("dark");
   const [collapsed,    setCollapsed]   = useState(false);
@@ -1477,15 +606,18 @@ export default function StudylinApp() {
       return;
     }
     setUserId(data.userId);
-      setProfile({
-        name: data.profile.name,
-        publicId: data.profile.publicId,
-        avatarUrl: data.profile.avatarUrl,
-        dailyGoal: data.profile.dailyGoal,
-        focusMinutes: data.profile.focusMinutes,
-        shortBreakMinutes: data.profile.shortBreakMinutes,
-        longBreakMinutes: data.profile.longBreakMinutes,
-      });
+    setCtxUserId(data.userId);
+    const profileData = {
+      name: data.profile.name,
+      publicId: data.profile.publicId,
+      avatarUrl: data.profile.avatarUrl,
+      dailyGoal: data.profile.dailyGoal,
+      focusMinutes: data.profile.focusMinutes,
+      shortBreakMinutes: data.profile.shortBreakMinutes,
+      longBreakMinutes: data.profile.longBreakMinutes,
+    };
+    setProfile(profileData);
+    setCtxProfile(profileData);
     setProfileLoading(false);
     setAuthReady(true);
     const ensured = await ensureProfilePublicId(data.userId);
@@ -1526,6 +658,7 @@ export default function StudylinApp() {
     const last7 = buildLastNDays(7);
     setLast7Days(last7.map((d) => ({ date: d, minutes: byDate.get(d) || 0 })));
     setHistoryDays(last28.map((d) => ({ date: d, minutes: byDate.get(d) || 0 })));
+    setCtxTodayFocusMinutes(byDate.get(todayIST()) || 0);
     const totals = last28.map((d) => ({ date: d, minutes: byDate.get(d) || 0 }));
     const totalMinutes = totals.reduce((a, b) => a + b.minutes, 0);
     const best = totals.reduce((a, b) => (b.minutes > a.minutes ? b : a), totals[0]);
@@ -1745,7 +878,7 @@ export default function StudylinApp() {
   const displayInitial = (displayName[0] || "U").toUpperCase();
 
   if (!authReady) {
-    return <WorkspaceLoader authReady={authReady} />;
+    return <WorkspaceLoader />;
   }
   const showSidebar = !isMobile || mobileOpen;
   const mobileNavItems = NAV;
@@ -1763,7 +896,7 @@ export default function StudylinApp() {
       />
     ),
     profile: (
-      <MyProfilePanel
+      <ProfilePanel
         profile={profile}
         onProfileChange={(next) => {
           setProfile(next);
@@ -1924,7 +1057,7 @@ export default function StudylinApp() {
       >
         {/* Inner clip */}
         <div
-          className="flex flex-col h-full overflow-hidden"
+          className="flex flex-col h-full overflow-x-hidden overflow-y-auto"
           style={{
             width: "100%",
             background: "var(--sidebar-bg)",
@@ -1948,7 +1081,7 @@ export default function StudylinApp() {
           <div
             className="flex items-center shrink-0"
             style={{
-              height: 60,
+              height: 54,
               padding: `0 ${collapsed ? COLLAPSED_INSET : SIDEBAR_INSET}px`,
               justifyContent: "flex-start",
               transition: `padding ${SIDEBAR_ANIM_MS}ms ease`,
@@ -1959,11 +1092,15 @@ export default function StudylinApp() {
                 className="flex items-center justify-center rounded-xl shrink-0"
                 style={{
                   width: ICON_COL, height: ICON_COL,
-                  background: "linear-gradient(135deg,#6366f1 0%,#8b5cf6 100%)",
-                  boxShadow: "0 2px 14px rgba(99,102,241,0.50)",
+                  borderRadius: 12,
+                  background: "linear-gradient(135deg, rgba(12,14,24,0.98) 0%, rgba(24,26,40,0.96) 100%)",
+                  boxShadow: "0 2px 14px rgba(0,0,0,0.35), inset 0 0 0 1px rgba(255,255,255,0.06)",
+                  overflow: "hidden",
+                  padding: 0,
+                  boxSizing: "border-box",
                 }}
               >
-                <FomoDoroIcon size={30} />
+                <FomoDoroIcon size={ICON_COL} />
               </div>
               {/* max-width collapse → clips text right-to-left; key flip → remount → retype */}
               <div style={{
@@ -1998,42 +1135,31 @@ export default function StudylinApp() {
             {isMobile ? (
               <div
                 className="flex items-center justify-center shrink-0"
-                style={{
+              style={{
                   width: 36,
                   height: 36,
-                  borderRadius: 12,
-                  background: "linear-gradient(135deg,#6366f1 0%,#8b5cf6 100%)",
-                  boxShadow: "0 2px 14px rgba(99,102,241,0.35)",
+                  borderRadius: 10,
+                  background: "linear-gradient(135deg, rgba(12,14,24,0.98) 0%, rgba(24,26,40,0.96) 100%)",
+                  boxShadow: "0 2px 14px rgba(0,0,0,0.25), inset 0 0 0 1px rgba(255,255,255,0.06)",
+                  overflow: "hidden",
+                  padding: 0,
+                  boxSizing: "border-box",
                 }}
                 aria-hidden="true"
               >
-                <FomoDoroIcon size={20} />
+                <FomoDoroIcon size={36} />
               </div>
-            ) : (
-              <LoadingButton
-                onClick={() => setCollapsed(c => !c)}
-                title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-                style={{
-                  width: 32,
-                  height: 32,
-                  borderRadius: 10,
-                  border: "1px solid var(--glass-border)",
-                  background: "var(--glass-1)",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  color: "var(--text-2)",
-                }}
-              >
-                <ChevronIcon pointRight={collapsed} />
-              </LoadingButton>
-            )}
+            ) : null}
           </div>
 
           {/* ── Nav — NO workspace label, consistent padding ── */}
           <nav
-            className="flex flex-col gap-0.5 flex-1 overflow-hidden"
-            style={{ padding: isMobile ? "6px 0" : "8px 0" }}
+            className="flex flex-col gap-0.5 flex-1"
+            style={{
+              minHeight: 0,
+              overflowY: "auto",
+              padding: "2px 0",
+            }}
           >
             {NAV.map((item) => {
               const active = view === item.id;
@@ -2048,7 +1174,8 @@ export default function StudylinApp() {
                   title={collapsed ? item.label : undefined}
                   style={{
                     /* Fixed padding — icons never shift */
-                    padding: `9px ${collapsed ? COLLAPSED_INSET : SIDEBAR_INSET}px`,
+                    padding: `7px ${collapsed ? COLLAPSED_INSET : SIDEBAR_INSET}px`,
+                    minHeight: 56,
                     gap: collapsed ? 0 : 10,
                     justifyContent: "flex-start",
                     background: "transparent",
@@ -2062,10 +1189,7 @@ export default function StudylinApp() {
                       aria-hidden="true"
                       style={{
                         position: "absolute",
-                        top: 0,
-                        bottom: 0,
-                        left: ACTIVE_GLOW_INSET,
-                        right: ACTIVE_GLOW_INSET,
+                        inset: "2px 6px",
                         borderRadius: 14,
                         background: "var(--accent-dim)",
                         border: "1px solid var(--accent-border)",
@@ -2074,7 +1198,7 @@ export default function StudylinApp() {
                       }}
                     />
                   )}
-                  <span style={{ width: ICON_COL, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", opacity: active ? 1 : 0.65 }}>
+                  <span style={{ width: ICON_COL, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", opacity: active ? 1 : 0.65, position: "relative", zIndex: 1 }}>
                     {item.icon}
                   </span>
                   {/* Wrapper clips right-to-left on collapse; key remounts TypewriterText on expand */}
@@ -2084,6 +1208,8 @@ export default function StudylinApp() {
                     transition: `max-width ${SIDEBAR_ANIM_MS}ms cubic-bezier(0.4,0,0.2,1)`,
                     textAlign: "left",
                     willChange: "max-width",
+                    position: "relative",
+                    zIndex: 1,
                   }}>
                     <TypewriterText
                       key={`label-${item.id}-${expandTick}`}
@@ -2110,7 +1236,7 @@ export default function StudylinApp() {
           {!isMobile && !collapsed && (leaderboardLoading || leaderboard.length > 0) && (
             <div
               style={{
-                margin: "4px 8px 8px",
+                margin: "0 8px 4px",
                 background: "var(--glass-1)",
                 border: "1px solid var(--glass-border)",
                 borderRadius: 14,
@@ -2122,7 +1248,7 @@ export default function StudylinApp() {
 
           {/* ── Theme switcher — just above the profile border ── */}
           {collapsed ? (
-            <div className="flex justify-center shrink-0" style={{ padding: "0 8px 8px" }}>
+            <div className="flex justify-center shrink-0" style={{ padding: "0 8px 4px" }}>
               <LoadingButton
                 onClick={() => applyTheme(theme === "dark" ? "light" : "dark")}
                 title={theme === "dark" ? "Switch to light" : "Switch to dark"}
@@ -2141,7 +1267,7 @@ export default function StudylinApp() {
               </LoadingButton>
             </div>
           ) : (
-            <div className="shrink-0" style={{ padding: "0 8px 8px" }}>
+            <div className="shrink-0" style={{ padding: "0 8px 4px" }}>
               <ThemePill theme={theme} onSet={applyTheme} />
             </div>
           )}
@@ -2196,44 +1322,69 @@ export default function StudylinApp() {
       >
         {/* ── Header ── */}
         <header
-          className="flex items-center shrink-0"
+          className="shrink-0"
           style={{
             height: 60,
-            padding: isMobile ? "0 16px" : "0 24px",
+            padding: isMobile ? "0 10px" : "0 24px",
             background: "var(--header-bg)",
             backdropFilter: "blur(20px)",
             WebkitBackdropFilter: "blur(20px)",
             transition: "background 0.35s ease, border-color 0.35s ease",
             position: "relative",
             zIndex: 40,
+            display: isMobile ? "grid" : "flex",
+            gridTemplateColumns: isMobile ? "auto minmax(0, 1fr) auto" : undefined,
+            alignItems: "center",
+            columnGap: isMobile ? 8 : undefined,
           }}
         >
           {isMobile && (
             <div
               style={{
-                width: 36,
-                height: 36,
-                borderRadius: 12,
-                background: "linear-gradient(135deg,#6366f1 0%,#8b5cf6 100%)",
-                boxShadow: "0 2px 14px rgba(99,102,241,0.35)",
                 display: "flex",
                 alignItems: "center",
-                justifyContent: "center",
-                marginRight: 10,
-                flexShrink: 0,
+                gap: 8,
+                minWidth: 0,
+                justifySelf: "start",
               }}
-              aria-hidden="true"
             >
-              <FomoDoroIcon size={20} />
+              <div
+                style={{
+                  width: 38,
+                  height: 38,
+                  borderRadius: 11,
+                  background: "linear-gradient(135deg, rgba(12,14,24,0.98) 0%, rgba(24,26,40,0.96) 100%)",
+                  boxShadow: "0 2px 14px rgba(0,0,0,0.25), inset 0 0 0 1px rgba(255,255,255,0.06)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  flexShrink: 0,
+                  overflow: "hidden",
+                  padding: 0,
+                  boxSizing: "border-box",
+                }}
+                aria-hidden="true"
+              >
+                <FomoDoroIcon size={38} />
+              </div>
+              <div style={{ minWidth: 0, display: "flex", flexDirection: "column", lineHeight: 1.02 }}>
+                <span style={{ fontSize: 12.5, fontWeight: 700, color: "var(--text-1)", whiteSpace: "nowrap" }}>
+                  FomoDoro
+                </span>
+                <span style={{ fontSize: 9, color: "var(--text-3)", whiteSpace: "nowrap" }}>
+                  Focus. Repeat.
+                </span>
+              </div>
             </div>
           )}
           {!isMobile && (
             <div
               style={{
-                position: "absolute",
-                left: "50%",
+                position: "fixed",
+                left: "46%",
                 transform: "translateX(-50%)",
                 textAlign: "center",
+                pointerEvents: "none",
               }}
             >
               <h1 style={{ fontSize: 15, fontWeight: 700, color: "var(--text-1)", lineHeight: 1.1, letterSpacing: "-0.01em" }}>
@@ -2243,7 +1394,7 @@ export default function StudylinApp() {
           )}
 
           {/* Profile button — top right */}
-          <div style={{ marginLeft: "auto", position: "relative" }}>
+          <div style={{ marginLeft: isMobile ? 0 : "auto", position: "relative", justifySelf: isMobile ? "end" : "auto" }}>
             {profileOpen && (
               <div
                 ref={profileMenuRef}
@@ -2251,10 +1402,10 @@ export default function StudylinApp() {
                   position: "absolute",
                   top: "calc(100% + 8px)",
                   right: 0,
-                  background: "var(--header-bg)",
+                  background: "var(--bg-base)",
                   border: "1px solid var(--glass-border)",
                   borderRadius: 14,
-                  boxShadow: "var(--glass-shadow)",
+                  boxShadow: "0 18px 40px rgba(0,0,0,0.45)",
                   overflow: "hidden",
                   zIndex: 80,
                   minWidth: 190,
@@ -2298,8 +1449,8 @@ export default function StudylinApp() {
               style={{
                 display: "flex",
                 alignItems: "center",
-                gap: 10,
-                padding: "6px 8px",
+                gap: isMobile ? 6 : 10,
+                padding: isMobile ? "4px 6px" : "6px 8px",
                 background: "transparent",
                 border: "none",
                 cursor: "pointer",
@@ -2310,18 +1461,27 @@ export default function StudylinApp() {
               <div
                 className="flex items-center justify-center rounded-full shrink-0"
                 style={{
-                  width: 30, height: 30,
+                  width: isMobile ? 26 : 30, height: isMobile ? 26 : 30,
                   background: "linear-gradient(135deg,#6366f1,#06b6d4)",
                   color: "white", fontSize: 12, fontWeight: 700,
+                  overflow: "hidden", flexShrink: 0,
                 }}
               >
-                {displayInitial}
+                {profile.avatarUrl ? (
+                  <img
+                    src={profile.avatarUrl}
+                    alt={displayInitial}
+                    style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                  />
+                ) : (
+                  displayInitial
+                )}
               </div>
-              <span style={{ fontSize: 13, fontWeight: 650 }}>
+              <span style={{ fontSize: 13, fontWeight: 650, display: isMobile ? "none" : "inline" }}>
                 {profileLoading ? "Loading..." : displayName}
               </span>
               <span style={{
-                display: "flex",
+                display: isMobile ? "none" : "flex",
                 alignItems: "center",
                 opacity: profileHover || profileOpen ? 1 : 0.7,
                 transition: "opacity 0.15s ease, transform 0.2s ease",
@@ -2444,8 +1604,8 @@ export default function StudylinApp() {
                 aria-label={item.label}
                 title={item.label}
                 style={{
-                  height: 46,
-                  borderRadius: 16,
+                  height: 44,
+                  borderRadius: 15,
                   border: "1px solid transparent",
                   background: active ? "var(--accent-dim)" : "transparent",
                   color: active ? "var(--accent-text)" : "var(--text-2)",
@@ -2461,14 +1621,14 @@ export default function StudylinApp() {
                 <span
                   className="mobile-dock-icon"
                   style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  width: 24,
-                  height: 24,
-                  borderRadius: 999,
-                  background: active ? "rgba(255,255,255,0.06)" : "transparent",
-                }}
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    width: 24,
+                    height: 24,
+                    borderRadius: 999,
+                    background: active ? "rgba(255,255,255,0.06)" : "transparent",
+                  }}
                 >
                   {item.icon}
                 </span>
