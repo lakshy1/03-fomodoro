@@ -256,15 +256,17 @@ export async function fetchFriends(userId: string): Promise<FriendRecord[]> {
 }
 
 // Remove a friend connection in both directions.
-export async function removeFriend(userId: string, friendId: string) {
-  if (!userId || !friendId) return;
+export async function removeFriend(userId: string, friendId: string): Promise<boolean> {
+  if (!userId || !friendId) return true;
   const [a, b] = await Promise.all([
     supabase.from("friends").delete().eq("user_id", userId).eq("friend_id", friendId),
     supabase.from("friends").delete().eq("user_id", friendId).eq("friend_id", userId),
   ]);
   if (a.error && b.error) {
-    throw new Error("Unable to remove friend.");
+    console.error("[FomoDoro] removeFriend:", a.error.message, b.error?.message);
+    return false;
   }
+  return true;
 }
 
 // Create a friend request using a public code.

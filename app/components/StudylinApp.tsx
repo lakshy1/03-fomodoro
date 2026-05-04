@@ -23,7 +23,10 @@ import {
 } from "../lib/queries";
 import {
   addCachedFocusMinutes,
+  filterHiddenFriends,
   getCachedFocusMap,
+  getHiddenFriendIds,
+  hideFriendLocally,
   mergeCachedFocusIntoDays,
 } from "../lib/focusCache";
 import { supabase } from "../lib/supabaseClient";
@@ -707,15 +710,20 @@ export default function StudylinApp() {
     const rows = await fetchLeaderboardRange(userId, days[0], days[days.length - 1], days, profile.name);
     if (!mountedRef.current) return;
     const localCache = getCachedFocusMap(userId);
-    setLeaderboard(rows.map((row) => {
-      if (row.id !== userId) return row;
-      const mergedDays = mergeCachedFocusIntoDays(row.days, localCache);
-      return {
-        ...row,
-        days: mergedDays,
-        total: mergedDays.reduce((sum, day) => sum + day.minutes, 0),
-      };
-    }).sort((a, b) => b.total - a.total));
+    const hidden = new Set(getHiddenFriendIds(userId));
+    const mergedRows = rows
+      .filter((row) => !hidden.has(row.id))
+      .map((row) => {
+        if (row.id !== userId) return row;
+        const mergedDays = mergeCachedFocusIntoDays(row.days, localCache);
+        return {
+          ...row,
+          days: mergedDays,
+          total: mergedDays.reduce((sum, day) => sum + day.minutes, 0),
+        };
+      })
+      .sort((a, b) => b.total - a.total);
+    setLeaderboard(mergedRows);
     setLeaderboardLoading(false);
   }, [userId, leaderboardRange, profile.name]);
 
@@ -750,7 +758,7 @@ export default function StudylinApp() {
     setFriendsLoading(true);
     const data = await fetchFriends(userId);
     if (!mountedRef.current) return;
-    setFriends(data);
+    setFriends(filterHiddenFriends(data, userId));
     setFriendsLoading(false);
   }, [userId]);
 
@@ -762,7 +770,10 @@ export default function StudylinApp() {
     if (!userId) return;
     const { data } = await supabase.from("friends").select("friend_id").eq("user_id", userId);
     if (!mountedRef.current) return;
-    const ids = (data || []).map((row: { friend_id: string }) => row.friend_id);
+    const hidden = new Set(getHiddenFriendIds(userId));
+    const ids = (data || [])
+      .map((row: { friend_id: string }) => row.friend_id)
+      .filter((friendId) => !hidden.has(friendId));
     setRealtimeFriendIds(ids);
   }, [userId]);
 
@@ -869,7 +880,12 @@ export default function StudylinApp() {
   }, [userId, refreshRequests]);
 
   const handleRemoveFriend = useCallback(async (id: string) => {
-    await removeFriend(userId || "", id);
+    hideFriendLocally(userId, id);
+    setFriends((prev) => prev.filter((friend) => friend.id !== id));
+    const removed = await removeFriend(userId || "", id);
+    if (!removed) {
+      console.warn("[FomoDoro] friend removal stayed local only.");
+    }
     await Promise.all([refreshFriends(), refreshLeaderboard()]);
   }, [userId, refreshFriends, refreshLeaderboard]);
 
