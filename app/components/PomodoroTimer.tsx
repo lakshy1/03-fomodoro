@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { App } from "@capacitor/app";
 import { Capacitor } from "@capacitor/core";
 import { LocalNotifications } from "@capacitor/local-notifications";
 import LoadingButton from "./LoadingButton";
@@ -247,10 +246,12 @@ export default function PomodoroTimer({
   onSyncMinutes?: (minutes: number) => void;
 }) {
   const { state, setMode, toggle, start, reset, updateSettings, lastComplete, clearLastComplete } = usePomodoroStore(settings);
-  const { mode, timeLeft, running, sessions } = state;
+  const { mode, timeLeft, running, sessions, sessionDate } = state;
   const { push } = useToast();
   const { todayFocusMinutes } = useAppContext();
   const isAndroidNative = Capacitor.isNativePlatform() && Capacitor.getPlatform() === "android";
+  const [displayFocusMinutes, setDisplayFocusMinutes] = useState(todayFocusMinutes);
+  const lastSessionDateRef = useRef(sessionDate);
 
   // ── Pinned task state ──
   const [pinnedTask, setPinnedTask]     = useState<SharedTask | null>(null);
@@ -328,8 +329,20 @@ export default function PomodoroTimer({
   const nativeTimerStateRef = useRef({ timeLeft: state.timeLeft, mode: state.mode, running: state.running });
 
   const flushMinutes = useCallback((minutes: number) => {
-    if (minutes > 0) onSyncMinutes?.(minutes);
+    if (minutes <= 0) return;
+    setDisplayFocusMinutes((prev) => prev + minutes);
+    onSyncMinutes?.(minutes);
   }, [onSyncMinutes]);
+
+  useEffect(() => {
+    setDisplayFocusMinutes((prev) => Math.max(prev, todayFocusMinutes));
+  }, [todayFocusMinutes]);
+
+  useEffect(() => {
+    if (lastSessionDateRef.current === sessionDate) return;
+    lastSessionDateRef.current = sessionDate;
+    setDisplayFocusMinutes(0);
+  }, [sessionDate]);
 
   useEffect(() => {
     nativeTimerStateRef.current = {
@@ -429,7 +442,7 @@ export default function PomodoroTimer({
     if (nowRunning && prevTimeLeftRef.current !== null) {
       const delta = prevTimeLeftRef.current - nowTL;
       prevTimeLeftRef.current = nowTL;
-      if (delta > 0 && delta <= 5) {
+      if (delta > 0) {
         pendingSecondsRef.current += delta;
         const mins = Math.floor(pendingSecondsRef.current / 60);
         if (mins > 0) {
@@ -745,13 +758,11 @@ export default function PomodoroTimer({
   const dashOffset = CIRCUMFERENCE * (1 - progress);
   const minutes    = pad(Math.floor(timeLeft / 60));
   const seconds    = pad(timeLeft % 60);
-  // Completed sessions + elapsed minutes of the current running focus session
-  const elapsedThisSession = mode === "focus" ? Math.floor((duration - timeLeft) / 60) : 0;
-  const localTotalMinutes = Math.floor(sessions * state.settings.focusMinutes) + elapsedThisSession;
-  // Sync with remote — take whichever is higher (remote data from Supabase via AppContext)
-  const remoteSessions = state.settings.focusMinutes > 0 ? Math.floor(todayFocusMinutes / state.settings.focusMinutes) : 0;
-  const displaySessions = Math.max(sessions, remoteSessions);
-  const totalMinutes = Math.max(localTotalMinutes, todayFocusMinutes + elapsedThisSession);
+  // Keep the visible totals monotonic so a reset never makes the focus metric go backwards.
+  const displaySessions = state.settings.focusMinutes > 0
+    ? Math.max(sessions, Math.floor(displayFocusMinutes / state.settings.focusMinutes))
+    : sessions;
+  const totalMinutes = displayFocusMinutes;
 
   // ── Shared task widget pieces ──
   const PinIcon = ({ filled }: { filled: boolean }) => (

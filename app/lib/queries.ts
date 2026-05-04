@@ -12,6 +12,12 @@ type ProfileRecord = {
 
 type DayDatum = { date: string; minutes: number };
 type LeaderboardEntry = { name: string; days: DayDatum[]; total: number };
+type FriendRecord = {
+  id: string;
+  name: string;
+  publicId: string;
+  avatarUrl: string | null;
+};
 type FriendRequestRow = {
   id: string;
   direction: "incoming" | "outgoing";
@@ -219,6 +225,45 @@ export async function fetchFriendRequests(userId: string): Promise<FriendRequest
       createdAt: r.created_at,
     };
   });
+}
+
+// Fetch the user's accepted friends with basic profile metadata.
+export async function fetchFriends(userId: string): Promise<FriendRecord[]> {
+  const { data: links, error: linkError } = await supabase
+    .from("friends")
+    .select("friend_id")
+    .eq("user_id", userId);
+  if (linkError) return [];
+
+  const ids = Array.from(new Set((links || []).map((row: { friend_id: string }) => row.friend_id)));
+  if (!ids.length) return [];
+
+  const { data: profiles, error: profileError } = await supabase
+    .from("profiles")
+    .select("id, name, public_id, avatar_url")
+    .in("id", ids);
+  if (profileError) return [];
+
+  return (profiles || [])
+    .map((p: { id: string; name: string; public_id: string; avatar_url: string | null }) => ({
+      id: p.id,
+      name: p.name || "Friend",
+      publicId: p.public_id || "------",
+      avatarUrl: p.avatar_url || null,
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+// Remove a friend connection in both directions.
+export async function removeFriend(userId: string, friendId: string) {
+  if (!userId || !friendId) return;
+  const [a, b] = await Promise.all([
+    supabase.from("friends").delete().eq("user_id", userId).eq("friend_id", friendId),
+    supabase.from("friends").delete().eq("user_id", friendId).eq("friend_id", userId),
+  ]);
+  if (a.error && b.error) {
+    throw new Error("Unable to remove friend.");
+  }
 }
 
 // Create a friend request using a public code.

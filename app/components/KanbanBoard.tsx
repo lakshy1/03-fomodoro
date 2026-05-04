@@ -45,28 +45,30 @@ function uid() {
 }
 
 export default function KanbanBoard() {
-  const [cards, setCards] = useState<Card[]>([]);
+  const [cards, setCards] = useState<Card[]>(() => {
+    try {
+      const saved = localStorage.getItem("studylin_kanban");
+      return saved ? (JSON.parse(saved) as Card[]) : [];
+    } catch {
+      return [];
+    }
+  });
   const [inputs, setInputs] = useState<Record<Status, string>>({ todo: "", doing: "", done: "" });
   const [adding, setAdding] = useState<Status | null>(null);
   const [dragging, setDragging] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState<Status | null>(null);
 
-  function loadCards() {
-    try {
-      const saved = localStorage.getItem("studylin_kanban");
-      if (saved) setCards(JSON.parse(saved));
-    } catch { /* ignore */ }
-  }
-
-  useEffect(() => {
-    loadCards();
-  }, []);
-
   // Reload cards when TodoList sends a task to Kanban
   useEffect(() => {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent<{ type: string }>).detail;
-      if (detail?.type === "kanban") loadCards();
+      if (detail?.type !== "kanban") return;
+      try {
+        const saved = localStorage.getItem("studylin_kanban");
+        setCards(saved ? (JSON.parse(saved) as Card[]) : []);
+      } catch {
+        // ignore
+      }
     };
     window.addEventListener(SHARED_TASKS_CHANGED, handler);
     return () => window.removeEventListener(SHARED_TASKS_CHANGED, handler);
@@ -279,10 +281,7 @@ function KanbanCard({
   const [confirmDelete, setConfirmDelete] = useState(false);
   const confirmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // On touch devices group-hover never fires, so always show the action row.
-  const [isTouchDevice, setIsTouchDevice] = useState(false);
-  useEffect(() => {
-    setIsTouchDevice(window.matchMedia("(hover: none)").matches);
-  }, []);
+  const [isTouchDevice] = useState(() => window.matchMedia("(hover: none)").matches);
 
   function requestDelete() {
     setConfirmDelete(true);

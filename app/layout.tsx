@@ -1,20 +1,9 @@
 import type { Metadata, Viewport } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import ViewportHeight from "./components/ViewportHeight";
 import ToastProvider from "./components/ToastProvider";
 import { AppProvider } from "./components/AppContext";
 import OfflineBanner from "./components/OfflineBanner";
-
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
 
 export const metadata: Metadata = {
   title: "FomoDoro - Focus. Repeat.",
@@ -38,10 +27,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html
-      lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full`}
-    >
+    <html lang="en" className="h-full">
       <body className="h-full overflow-hidden">
         <div className="app-shell">
           <ViewportHeight />

@@ -138,11 +138,13 @@ export default function AmbientSounds() {
   }
 
   useEffect(() => {
+    const activeSounds = activeSoundsRef.current;
+    const audioContext = ctxRef.current;
     return () => {
-      activeSoundsRef.current.forEach((active) => {
+      activeSounds.forEach((active) => {
         try { active.audio.pause(); active.gainNode.disconnect(); } catch { /* ignore */ }
       });
-      ctxRef.current?.close();
+      audioContext?.close();
     };
   }, []);
 

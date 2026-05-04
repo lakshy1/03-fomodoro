@@ -28,20 +28,19 @@ function uid() {
 }
 
 export default function TodoList() {
-  const [tasks, setTasks] = useState<Task[]>([]);
+  const [tasks, setTasks] = useState<Task[]>(() => {
+    try {
+      const saved = localStorage.getItem("studylin_tasks");
+      return saved ? (JSON.parse(saved) as Task[]) : [];
+    } catch {
+      return [];
+    }
+  });
   const [input, setInput] = useState("");
   const [priority, setPriority] = useState<Priority>("medium");
   const [filter, setFilter] = useState<Filter>("all");
-  const [pinnedId, setPinnedId] = useState<string | null>(null);
+  const [pinnedId, setPinnedId] = useState<string | null>(() => getPinnedTaskId());
   const inputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem("studylin_tasks");
-      if (saved) setTasks(JSON.parse(saved));
-    } catch { /* ignore */ }
-    setPinnedId(getPinnedTaskId());
-  }, []);
 
   useEffect(() => {
     localStorage.setItem("studylin_tasks", JSON.stringify(tasks));

@@ -14,6 +14,13 @@ export type FriendRequest = {
   createdAt: string;
 };
 
+export type FriendRecord = {
+  id: string;
+  name: string;
+  publicId: string;
+  avatarUrl: string | null;
+};
+
 export type LeaderboardRange = "last7" | "month";
 
 export type ProfileRecord = {

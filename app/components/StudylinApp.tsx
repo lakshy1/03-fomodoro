@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
+import Image from "next/image";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { App } from "@capacitor/app";
@@ -10,10 +11,12 @@ import {
   createFriendRequestByCode,
   declineFriendRequest,
   fetchCalendarRange,
+  fetchFriends,
   fetchFriendRequests,
   fetchLeaderboardRange,
   fetchProfile,
   saveFocusMinutes,
+  removeFriend,
   signOutUser,
   updateProfile,
   ensureProfilePublicId,
@@ -24,9 +27,9 @@ import { useToast } from "./ToastProvider";
 import { useAppContext } from "./AppContext";
 import ProfilePanel from "./panels/ProfilePanel";
 import CalendarPanel from "./panels/CalendarPanel";
-import { RequestsPanel, AddFriendPanel } from "./panels/FriendPanels";
+import { FriendsPanel } from "./panels/FriendsPanel";
 import { LeaderboardPanel, LeaderboardMini } from "./panels/LeaderboardPanel";
-import type { DayDatum, FriendRequest, LeaderboardEntry, LeaderboardRange, ProfileRecord } from "./panels/shared";
+import type { DayDatum, FriendRecord, FriendRequest, LeaderboardEntry, LeaderboardRange, ProfileRecord } from "./panels/shared";
 
 const PomodoroTimer = dynamic(() => import("./PomodoroTimer"), { ssr: false });
 const TodoList      = dynamic(() => import("./TodoList"),      { ssr: false });
@@ -85,7 +88,7 @@ function WorkspaceLoader() {
 
 type Tab   = "pomodoro" | "tasks" | "sounds" | "notes" | "kanban";
 type Theme = "dark" | "light";
-type View  = Tab | "leaderboard" | "profile" | "calendar" | "requests" | "add-friend";
+type View  = Tab | "leaderboard" | "profile" | "calendar" | "friends";
 
 
 // All dates are anchored to IST (Asia/Kolkata). Using Intl.DateTimeFormat avoids
@@ -184,7 +187,7 @@ const NAV: { id: View; label: string; desc: string; icon: React.ReactNode }[] = 
     icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/></svg>,
   },
   {
-    id: "leaderboard", label: "Leaderboard", desc: "Friends focus rank",
+    id: "friends", label: "Friends", desc: "Connections and requests",
     icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M4 21v-7"/><path d="M12 21V3"/><path d="M20 21v-11"/></svg>,
   },
 ];
@@ -198,8 +201,7 @@ const VIEW_META: Record<View, { title: string; subtitle: string }> = {
   leaderboard: { title: "Leaderboard", subtitle: "See how you stack up against friends." },
   profile:  { title: "My Profile",     subtitle: "Your identity, stats, and profile settings." },
   calendar: { title: "My Calendar",    subtitle: "Your focus activity over time." },
-  requests: { title: "Requests",       subtitle: "Pending friend requests and invites." },
-  "add-friend": { title: "Add Friend", subtitle: "Invite and connect with your study circle." },
+  friends:  { title: "Friends",        subtitle: "Send requests, manage friends, and review pending invites." },
 };
 
 const SIDEBAR_ANIM_MS = 500;
@@ -442,11 +444,13 @@ export default function StudylinApp() {
   const [profileLoading, setProfileLoading] = useState(true);
   const [calendarLoading, setCalendarLoading] = useState(true);
   const [requestsLoading, setRequestsLoading] = useState(true);
+  const [friendsLoading, setFriendsLoading] = useState(true);
   const [leaderboardLoading, setLeaderboardLoading] = useState(true);
   const [leaderboardRange, setLeaderboardRange] = useState<LeaderboardRange>("last7");
   const [profileSaveTick, setProfileSaveTick] = useState(0);
   const [requests, setRequests] = useState<FriendRequest[]>([]);
   const [profileStats, setProfileStats] = useState({ total: 0, streak: 0, bestDay: "" });
+  const [friends, setFriends] = useState<FriendRecord[]>([]);
   const [realtimeFriendIds, setRealtimeFriendIds] = useState<string[]>([]);
   const profileMenuRef = useRef<HTMLDivElement | null>(null);
   const profileBtnRef = useRef<HTMLButtonElement | null>(null);
@@ -624,7 +628,7 @@ export default function StudylinApp() {
     if (ensured && mountedRef.current) {
       setProfile((p) => ({ ...p, publicId: ensured }));
     }
-  }, [router]);
+  }, [router, setCtxProfile, setCtxUserId]);
 
   useEffect(() => {
     loadProfile();
@@ -678,7 +682,7 @@ export default function StudylinApp() {
       bestDay: best.date,
     });
     setCalendarLoading(false);
-  }, [userId]);
+  }, [userId, setCtxTodayFocusMinutes]);
 
   useEffect(() => {
     refreshCalendar();
@@ -723,6 +727,19 @@ export default function StudylinApp() {
     refreshRequests();
   }, [refreshRequests]);
 
+  const refreshFriends = useCallback(async () => {
+    if (!userId) return;
+    setFriendsLoading(true);
+    const data = await fetchFriends(userId);
+    if (!mountedRef.current) return;
+    setFriends(data);
+    setFriendsLoading(false);
+  }, [userId]);
+
+  useEffect(() => {
+    refreshFriends();
+  }, [refreshFriends]);
+
   const refreshFriendIds = useCallback(async () => {
     if (!userId) return;
     const { data } = await supabase.from("friends").select("friend_id").eq("user_id", userId);
@@ -754,6 +771,7 @@ export default function StudylinApp() {
         { event: "*", schema: "public", table: "friends", filter: `user_id=eq.${userId}` },
         () => {
           refreshFriendIds();
+          refreshFriends();
           refreshLeaderboard();
           refreshRequests();
         }
@@ -767,7 +785,7 @@ export default function StudylinApp() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [userId, loadProfile, refreshFriendIds, refreshLeaderboard, refreshRequests]);
+  }, [userId, loadProfile, refreshFriendIds, refreshFriends, refreshLeaderboard, refreshRequests]);
 
   useEffect(() => {
     if (!userId) return;
@@ -804,6 +822,28 @@ export default function StudylinApp() {
     refreshLeaderboard();
   }, [userId, refreshCalendar, refreshLeaderboard]);
 
+  const handleSendRequest = useCallback(async (code: string) => {
+    if (!code.trim()) return;
+    await createFriendRequestByCode(userId || "", code.trim());
+    await refreshRequests();
+  }, [userId, refreshRequests]);
+
+  const handleAcceptRequest = useCallback(async (id: string) => {
+    await acceptFriendRequest(userId || "", id);
+    await Promise.all([refreshFriends(), refreshRequests()]);
+    refreshLeaderboard();
+  }, [userId, refreshFriends, refreshRequests, refreshLeaderboard]);
+
+  const handleDeclineRequest = useCallback(async (id: string) => {
+    await declineFriendRequest(userId || "", id);
+    await refreshRequests();
+  }, [userId, refreshRequests]);
+
+  const handleRemoveFriend = useCallback(async (id: string) => {
+    await removeFriend(userId || "", id);
+    await Promise.all([refreshFriends(), refreshLeaderboard()]);
+  }, [userId, refreshFriends, refreshLeaderboard]);
+
   useEffect(() => {
     if (typeof window === "undefined") return;
     const refresh = () => {
@@ -812,13 +852,14 @@ export default function StudylinApp() {
       void refreshCalendar();
       void refreshLeaderboard();
       void refreshRequests();
+      void refreshFriends();
       void refreshFriendIds();
     };
 
     window.addEventListener("focus", refresh);
 
     return () => window.removeEventListener("focus", refresh);
-  }, [loadProfile, refreshCalendar, refreshFriendIds, refreshLeaderboard, refreshRequests, userId]);
+  }, [loadProfile, refreshCalendar, refreshFriendIds, refreshFriends, refreshLeaderboard, refreshRequests, userId]);
 
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return;
@@ -831,6 +872,7 @@ export default function StudylinApp() {
       void refreshCalendar();
       void refreshLeaderboard();
       void refreshRequests();
+      void refreshFriends();
       void refreshFriendIds();
     }).then((handle) => {
       listener = handle;
@@ -839,7 +881,7 @@ export default function StudylinApp() {
     return () => {
       void listener?.remove();
     };
-  }, [loadProfile, refreshCalendar, refreshFriendIds, refreshLeaderboard, refreshRequests, userId]);
+  }, [loadProfile, refreshCalendar, refreshFriendIds, refreshFriends, refreshLeaderboard, refreshRequests, userId]);
 
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return;
@@ -920,16 +962,34 @@ export default function StudylinApp() {
       />
     ),
     calendar: <CalendarPanel last7={last7Days} history={historyDays} loading={calendarLoading} />,
-    requests: (
-      <RequestsPanel
+    friends: (
+      <FriendsPanel
+        friends={friends}
         requests={requests}
-        loading={requestsLoading}
+        loadingFriends={friendsLoading}
+        loadingRequests={requestsLoading}
+        onSend={async (code) => {
+          try {
+            await handleSendRequest(code);
+            push({ type: "success", title: "Request sent", message: "Friend request delivered." });
+          } catch (err) {
+            const message = err instanceof Error ? err.message : "Could not send request.";
+            push({ type: "error", title: "Request failed", message });
+          }
+        }}
+        onRemoveFriend={async (id) => {
+          try {
+            await handleRemoveFriend(id);
+            push({ type: "info", title: "Friend removed" });
+          } catch (err) {
+            const message = err instanceof Error ? err.message : "Could not remove friend.";
+            push({ type: "error", title: "Action failed", message });
+          }
+        }}
         onAccept={async (id) => {
           try {
-            await acceptFriendRequest(userId || "", id);
-            setRequests((r) => r.filter((req) => req.id !== id));
+            await handleAcceptRequest(id);
             push({ type: "success", title: "Friend added", message: "You are now connected." });
-            await refreshRequests();
           } catch (err) {
             const message = err instanceof Error ? err.message : "Could not accept request.";
             push({ type: "error", title: "Action failed", message });
@@ -937,10 +997,8 @@ export default function StudylinApp() {
         }}
         onDecline={async (id) => {
           try {
-            await declineFriendRequest(userId || "", id);
-            setRequests((r) => r.filter((req) => req.id !== id));
+            await handleDeclineRequest(id);
             push({ type: "info", title: "Request declined" });
-            await refreshRequests();
           } catch (err) {
             const message = err instanceof Error ? err.message : "Could not decline request.";
             push({ type: "error", title: "Action failed", message });
@@ -955,21 +1013,6 @@ export default function StudylinApp() {
         range={leaderboardRange}
         onRangeChange={setLeaderboardRange}
         onRefresh={refreshLeaderboard}
-      />
-    ),
-    "add-friend": (
-      <AddFriendPanel
-        onSend={async (code) => {
-          if (!code.trim()) return;
-          try {
-            await createFriendRequestByCode(userId || "", code.trim());
-            push({ type: "success", title: "Request sent", message: "Friend request delivered." });
-            await refreshRequests();
-          } catch (err) {
-            const message = err instanceof Error ? err.message : "Could not send request.";
-            push({ type: "error", title: "Request failed", message });
-          }
-        }}
       />
     ),
   };
@@ -993,22 +1036,13 @@ export default function StudylinApp() {
       view: "calendar" as View,
     },
     {
-      label: "Requests",
-      icon: (
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <rect x="3" y="4" width="18" height="16" rx="2"/><path d="M8 10h8"/><path d="M8 14h5"/>
-        </svg>
-      ),
-      view: "requests" as View,
-    },
-    {
-      label: "Add Friend",
+      label: "Friends",
       icon: (
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/>
         </svg>
       ),
-      view: "add-friend" as View,
+      view: "friends" as View,
     },
     {
       label: "Sign Out",
@@ -1468,9 +1502,12 @@ export default function StudylinApp() {
                 }}
               >
                 {profile.avatarUrl ? (
-                  <img
+                  <Image
                     src={profile.avatarUrl}
                     alt={displayInitial}
+                    width={isMobile ? 26 : 30}
+                    height={isMobile ? 26 : 30}
+                    unoptimized
                     style={{ width: "100%", height: "100%", objectFit: "cover" }}
                   />
                 ) : (

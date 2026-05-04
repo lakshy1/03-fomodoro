@@ -120,12 +120,14 @@ export function usePomodoroStore(initialSettings?: Partial<PomodoroSettings>) {
   });
   const [lastComplete, setLastComplete] = useState<{ mode: Mode; minutes: number } | null>(null);
   const channelRef = useRef<BroadcastChannel | null>(null);
-  const idRef = useRef<string>(Math.random().toString(36).slice(2));
+  const [instanceId] = useState(() => Math.random().toString(36).slice(2));
+  const idRef = useRef(instanceId);
   const ownerRef = useRef<boolean>(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   // Tracks real wall-clock time of last tick so throttled background intervals
   // still deduct the correct elapsed seconds (fixes timer drift when tab is hidden).
-  const lastTickTimeRef = useRef<number>(Date.now());
+  const lastTickTimeRef = useRef<number | null>(null);
+  const handleCommandRef = useRef<(cmd?: string, value?: unknown) => void>(() => {});
 
   const emitState = useCallback((next: PomodoroState) => {
     writeState(next);
@@ -150,7 +152,7 @@ export function usePomodoroStore(initialSettings?: Partial<PomodoroSettings>) {
         setState((prev) => (msg.payload!.updatedAt > prev.updatedAt ? msg.payload! : prev));
       }
       if (msg.type === "cmd" && ownerRef.current) {
-        handleCommand(msg.cmd, msg.value);
+        handleCommandRef.current(msg.cmd, msg.value);
       }
     };
     const onStorage = (e: StorageEvent) => {
@@ -254,6 +256,10 @@ export function usePomodoroStore(initialSettings?: Partial<PomodoroSettings>) {
     }
   }, [applyState]);
 
+  useEffect(() => {
+    handleCommandRef.current = handleCommand;
+  }, [handleCommand]);
+
   // Catch up the timer when the tab becomes visible again after being
   // backgrounded (the interval may not have fired while hidden).
   useEffect(() => {
@@ -262,7 +268,7 @@ export function usePomodoroStore(initialSettings?: Partial<PomodoroSettings>) {
       setState((prev) => {
         if (!prev.running) return prev;
         const now = Date.now();
-        const elapsed = Math.round((now - lastTickTimeRef.current) / 1000);
+        const elapsed = lastTickTimeRef.current ? Math.round((now - lastTickTimeRef.current) / 1000) : 0;
         if (elapsed <= 0) return prev;
         lastTickTimeRef.current = now;
         const nextTime = Math.max(0, prev.timeLeft - elapsed);
@@ -291,7 +297,7 @@ export function usePomodoroStore(initialSettings?: Partial<PomodoroSettings>) {
         const now = Date.now();
         // Use real elapsed ms so throttled background intervals still deduct
         // the correct amount of time instead of always just 1 second.
-        const elapsed = Math.max(1, Math.round((now - lastTickTimeRef.current) / 1000));
+        const elapsed = Math.max(1, Math.round((now - (lastTickTimeRef.current ?? now)) / 1000));
         lastTickTimeRef.current = now;
         const nextTime = prev.timeLeft - elapsed;
         if (nextTime <= 0) {

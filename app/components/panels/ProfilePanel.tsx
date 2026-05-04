@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState, type InputHTMLAttributes, useCallback } from "react";
+import Image from "next/image";
 import LoadingButton from "../LoadingButton";
 import { formatMinutes, SkeletonCard, type ProfileRecord } from "./shared";
 
@@ -209,7 +210,14 @@ export default function ProfilePanel({
           }}
         >
           {profile.avatarUrl ? (
-            <img src={profile.avatarUrl} alt="Profile" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+            <Image
+              src={profile.avatarUrl}
+              alt="Profile"
+              width={96}
+              height={96}
+              unoptimized
+              style={{ width: "100%", height: "100%", objectFit: "cover" }}
+            />
           ) : (
             <span style={{ color: "white", fontSize: 28, fontWeight: 700 }}>
               {(profile.name[0] ?? "U").toUpperCase()}

@@ -8,6 +8,8 @@
 /* ─── Dark (default via :root) ───────────────────────────────── */
 :root {
   color-scheme: dark;
+  --font-geist-sans: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  --font-geist-mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
 
   --bg-deep: #06080f;
   --bg-base: #0a0d16;

@@ -41,8 +41,23 @@ function timeAgo(ts: number): string {
 
 export default function Notes() {
   const { userId } = useAppContext();
-  const [notes, setNotes] = useState<Note[]>([]);
-  const [activeId, setActiveId] = useState<string | null>(null);
+  const [notes, setNotes] = useState<Note[]>(() => {
+    try {
+      const saved = localStorage.getItem("studylin_notes");
+      return saved ? (JSON.parse(saved) as Note[]) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [activeId, setActiveId] = useState<string | null>(() => {
+    try {
+      const saved = localStorage.getItem("studylin_notes");
+      const parsed = saved ? (JSON.parse(saved) as Note[]) : [];
+      return parsed[0]?.id ?? null;
+    } catch {
+      return null;
+    }
+  });
   const [search, setSearch] = useState("");
   const bodyRef = useRef<HTMLTextAreaElement>(null);
   const [isMobile, setIsMobile] = useState(false);
@@ -59,17 +74,6 @@ export default function Notes() {
   const syncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Load from localStorage first, then merge with Supabase
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem("studylin_notes");
-      if (saved) {
-        const parsed: Note[] = JSON.parse(saved);
-        setNotes(parsed);
-        if (parsed.length > 0) setActiveId(parsed[0].id);
-      }
-    } catch { /* ignore */ }
-  }, []);
-
   // Merge with Supabase once userId is available
   const syncFromRemote = useCallback(async () => {
     if (!userId) return;
@@ -94,7 +98,10 @@ export default function Notes() {
   }, [userId]);
 
   useEffect(() => {
-    syncFromRemote();
+    const id = setTimeout(() => {
+      void syncFromRemote();
+    }, 0);
+    return () => clearTimeout(id);
   }, [syncFromRemote]);
 
   useEffect(() => {
@@ -155,15 +162,9 @@ export default function Notes() {
       document.removeEventListener("touchmove", onTouchMove);
       document.removeEventListener("touchend", onTouchEnd);
     };
-  }, [isMobile, mobileView]);
+  }, [activeId, isMobile, mobileView]);
 
   const activeNote = notes.find((n) => n.id === activeId) ?? null;
-
-  // Reset delete confirmation whenever the active note changes
-  useEffect(() => {
-    setEditorDeletePending(false);
-    if (editorDeleteTimerRef.current) clearTimeout(editorDeleteTimerRef.current);
-  }, [activeId]);
 
   function newNote() {
     setNotes((prev) => {
@@ -540,4 +541,3 @@ export default function Notes() {
     </div>
   );
 }
-
