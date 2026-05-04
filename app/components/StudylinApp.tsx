@@ -23,12 +23,14 @@ import {
 } from "../lib/queries";
 import {
   addCachedFocusMinutes,
-  filterHiddenFriends,
   getCachedFocusMap,
-  getHiddenFriendIds,
-  hideFriendLocally,
   mergeCachedFocusIntoDays,
 } from "../lib/focusCache";
+import {
+  filterHiddenFriends,
+  getHiddenFriendIds,
+  hideFriendLocally,
+} from "../lib/friendCache";
 import { supabase } from "../lib/supabaseClient";
 import LoadingButton from "./LoadingButton";
 import { useToast } from "./ToastProvider";
