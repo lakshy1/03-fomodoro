@@ -4,7 +4,7 @@
 
 export type DayDatum = { date: string; minutes: number };
 
-export type LeaderboardEntry = { name: string; days: DayDatum[]; total: number };
+export type LeaderboardEntry = { id: string; name: string; days: DayDatum[]; total: number };
 
 export type FriendRequest = {
   id: string;

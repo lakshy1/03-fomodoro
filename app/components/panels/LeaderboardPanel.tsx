@@ -42,7 +42,7 @@ export function LeaderboardMini({
       <div style={{ fontSize: 11, color: "var(--text-3)", marginBottom: 8 }}>Leaderboard</div>
       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
         {rows.map((row) => (
-          <div key={row.name} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <div key={row.id} style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <div
               style={{ width: 10, height: 10, borderRadius: "50%", background: "var(--accent)", flexShrink: 0 }}
             />
@@ -167,7 +167,7 @@ export function LeaderboardPanel({
         }}
       >
         {rows.map((row, idx) => (
-          <div key={row.name} style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <div key={row.id} style={{ display: "flex", alignItems: "center", gap: 12 }}>
             <div style={{ width: 26, textAlign: "center", fontWeight: 700, color: "var(--text-1)", flexShrink: 0 }}>
               #{idx + 1}
             </div>

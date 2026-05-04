@@ -11,7 +11,7 @@ type ProfileRecord = {
 };
 
 type DayDatum = { date: string; minutes: number };
-type LeaderboardEntry = { name: string; days: DayDatum[]; total: number };
+type LeaderboardEntry = { id: string; name: string; days: DayDatum[]; total: number };
 type FriendRecord = {
   id: string;
   name: string;
@@ -184,6 +184,7 @@ export async function fetchLeaderboardRange(
     const daysData = days.map((d) => ({ date: d, minutes: map.get(d) || 0 }));
     const total = daysData.reduce((a, b) => a + b.minutes, 0);
     return {
+      id,
       name: names.get(id) || (id === userId ? currentName || "You" : "User"),
       days: daysData,
       total,
@@ -368,31 +369,18 @@ export async function declineFriendRequest(userId: string, requestId: string) {
 }
 
 // Upsert focus minutes for a given date (called every minute while timer runs and on session complete).
-export async function saveFocusMinutes(userId: string, date: string, minutesToAdd: number): Promise<void> {
-  if (!userId || minutesToAdd <= 0) return;
-  const { data, error: selectErr } = await supabase
-    .from("study_sessions")
-    .select("minutes")
-    .eq("user_id", userId)
-    .eq("date", date)
-    .maybeSingle();
-  if (selectErr) {
-    console.error("[FomoDoro] saveFocusMinutes select:", selectErr.message, selectErr.code);
-    return;
+export async function saveFocusMinutes(userId: string, date: string, minutesToAdd: number): Promise<boolean> {
+  if (!userId || minutesToAdd <= 0) return true;
+  const { error } = await supabase.rpc("add_focus_minutes", {
+    p_user_id: userId,
+    p_date: date,
+    p_minutes: minutesToAdd,
+  });
+  if (error) {
+    console.error("[FomoDoro] saveFocusMinutes rpc:", error.message, error.code);
+    return false;
   }
-  if (data) {
-    const { error: updateErr } = await supabase
-      .from("study_sessions")
-      .update({ minutes: (data.minutes ?? 0) + minutesToAdd })
-      .eq("user_id", userId)
-      .eq("date", date);
-    if (updateErr) console.error("[FomoDoro] saveFocusMinutes update:", updateErr.message, updateErr.code);
-  } else {
-    const { error: insertErr } = await supabase
-      .from("study_sessions")
-      .insert({ user_id: userId, date, minutes: minutesToAdd });
-    if (insertErr) console.error("[FomoDoro] saveFocusMinutes insert:", insertErr.message, insertErr.code);
-  }
+  return true;
 }
 
 // Sign the user out.

@@ -21,6 +21,11 @@ import {
   updateProfile,
   ensureProfilePublicId,
 } from "../lib/queries";
+import {
+  addCachedFocusMinutes,
+  getCachedFocusMap,
+  mergeCachedFocusIntoDays,
+} from "../lib/focusCache";
 import { supabase } from "../lib/supabaseClient";
 import LoadingButton from "./LoadingButton";
 import { useToast } from "./ToastProvider";
@@ -473,6 +478,7 @@ export default function StudylinApp() {
     buildLastNDays(28).map((d) => ({ date: d, minutes: 0 }))
   );
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
+  const focusSyncQueueRef = useRef(Promise.resolve());
 
   useEffect(() => {
     return () => {
@@ -659,11 +665,14 @@ export default function StudylinApp() {
     if (!mountedRef.current) return;
     const byDate = new Map<string, number>();
     data.forEach((row) => byDate.set(row.date, (byDate.get(row.date) || 0) + row.minutes));
+    const localCache = getCachedFocusMap(userId);
     const last7 = buildLastNDays(7);
-    setLast7Days(last7.map((d) => ({ date: d, minutes: byDate.get(d) || 0 })));
-    setHistoryDays(last28.map((d) => ({ date: d, minutes: byDate.get(d) || 0 })));
-    setCtxTodayFocusMinutes(byDate.get(todayIST()) || 0);
-    const totals = last28.map((d) => ({ date: d, minutes: byDate.get(d) || 0 }));
+    const mergedLast7 = last7.map((d) => ({ date: d, minutes: (byDate.get(d) || 0) + (localCache[d] || 0) }));
+    const mergedLast28 = last28.map((d) => ({ date: d, minutes: (byDate.get(d) || 0) + (localCache[d] || 0) }));
+    setLast7Days(mergedLast7);
+    setHistoryDays(mergedLast28);
+    setCtxTodayFocusMinutes(mergedLast28.find((d) => d.date === todayIST())?.minutes || 0);
+    const totals = mergedLast28;
     const totalMinutes = totals.reduce((a, b) => a + b.minutes, 0);
     const best = totals.reduce((a, b) => (b.minutes > a.minutes ? b : a), totals[0]);
     let streak = 0;
@@ -697,7 +706,16 @@ export default function StudylinApp() {
     const days = leaderboardRange === "month" ? monthDays : buildLastNDays(7);
     const rows = await fetchLeaderboardRange(userId, days[0], days[days.length - 1], days, profile.name);
     if (!mountedRef.current) return;
-    setLeaderboard(rows);
+    const localCache = getCachedFocusMap(userId);
+    setLeaderboard(rows.map((row) => {
+      if (row.id !== userId) return row;
+      const mergedDays = mergeCachedFocusIntoDays(row.days, localCache);
+      return {
+        ...row,
+        days: mergedDays,
+        total: mergedDays.reduce((sum, day) => sum + day.minutes, 0),
+      };
+    }).sort((a, b) => b.total - a.total));
     setLeaderboardLoading(false);
   }, [userId, leaderboardRange, profile.name]);
 
@@ -814,13 +832,24 @@ export default function StudylinApp() {
     localStorage.setItem("fomodoro_theme", t);
   }
 
-  const handleSyncMinutes = useCallback(async (minutes: number) => {
+  const handleSyncMinutes = useCallback((minutes: number) => {
     if (!userId || minutes <= 0) return;
     const today = todayIST();
-    await saveFocusMinutes(userId, today, minutes);
-    refreshCalendar();
-    refreshLeaderboard();
-  }, [userId, refreshCalendar, refreshLeaderboard]);
+    const optimisticTotal = addCachedFocusMinutes(today, minutes, userId);
+    setCtxTodayFocusMinutes(optimisticTotal);
+    focusSyncQueueRef.current = focusSyncQueueRef.current
+      .then(async () => {
+        const saved = await saveFocusMinutes(userId, today, minutes);
+        if (saved) {
+          addCachedFocusMinutes(today, -minutes, userId);
+        }
+        if (!mountedRef.current) return;
+        await Promise.all([refreshCalendar(), refreshLeaderboard()]);
+      })
+      .catch((err) => {
+        console.error("[FomoDoro] focus sync failed:", err);
+      });
+  }, [userId, refreshCalendar, refreshLeaderboard, setCtxTodayFocusMinutes]);
 
   const handleSendRequest = useCallback(async (code: string) => {
     if (!code.trim()) return;
